@@ -356,7 +356,7 @@ function leaveFamilySync(){
 function defaultData(){
   return {
     version: 1,
-    theme: 'clair',
+    theme: 'royaume',
     pinHash: null,
     notificationsEnabled: false,
     lastExportAt: null,
@@ -474,6 +474,16 @@ function migrateData(data){
       }
     });
     data.pointsRebalanced_v4 = true;
+    changed = true;
+  }
+  // Migration ponctuelle v5 : le thème Royaume devient l'apparence par défaut.
+  // Ne touche pas au thème si le parent l'a déjà changé pour autre chose que "clair"
+  // (l'ancien défaut) — dans ce cas, son choix est respecté.
+  if (!data.themeMigrated_v5){
+    if (data.theme === 'clair'){
+      data.theme = 'royaume';
+    }
+    data.themeMigrated_v5 = true;
     changed = true;
   }
   return changed;
