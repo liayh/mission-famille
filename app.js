@@ -133,47 +133,6 @@ function totalEuros(childId){
     .reduce((sum, r) => sum + (r.amount || 0), 0);
 }
 
-/* Série des points gagnés par semaine (la plus récente en dernier), pour le graphique de stats. */
-function weeklyPointsSeries(childId, weeks = 8){
-  const buckets = new Array(weeks).fill(0);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  Object.entries(state.completions).forEach(([dateStr, byChild]) => {
-    const doneIds = byChild[childId];
-    if (!doneIds || !doneIds.length) return;
-    const daysAgo = Math.round((today - new Date(dateStr + 'T00:00:00')) / 86400000);
-    if (daysAgo < 0 || daysAgo >= weeks * 7) return;
-    const points = doneIds.reduce((sum, taskId) => {
-      const task = state.tasks.find(t => t.id === taskId);
-      return sum + (task ? task.points : 0);
-    }, 0);
-    buckets[weeks - 1 - Math.floor(daysAgo / 7)] += points;
-  });
-  return buckets;
-}
-
-/* Nombre de jours consécutifs (jusqu'à hier ou aujourd'hui) où toutes les missions du jour ont été faites. */
-function computeStreak(childId){
-  let streak = 0;
-  const cursor = new Date();
-  cursor.setHours(0, 0, 0, 0);
-  for (let i = 0; i < 365; i++){
-    const dateStr = cursor.getFullYear() + '-' + String(cursor.getMonth()+1).padStart(2,'0') + '-' + String(cursor.getDate()).padStart(2,'0');
-    const dayTasks = state.tasks.filter(t => !t.schoolDaysOnly || isSchoolDay(cursor));
-    if (dayTasks.length > 0){
-      const completed = state.completions[dateStr]?.[childId] || [];
-      const allDone = dayTasks.every(t => completed.includes(t.id));
-      if (!allDone){
-        if (dateStr === todayStr()) { cursor.setDate(cursor.getDate() - 1); continue; }
-        break;
-      }
-      streak++;
-    }
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return streak;
-}
-
 function isSchoolDay(date = new Date()){
   const day = date.getDay(); // 0 = dimanche, 6 = samedi
   return day >= 1 && day <= 5;
@@ -633,10 +592,9 @@ function render(){
     ${renderTopbar()}
     ${renderBackupReminder()}
     ${renderChildRow()}
-    ${renderCalendar()}
-    ${renderStats()}
     ${renderLogicGames()}
     ${renderBoard()}
+    ${renderCalendar()}
     ${renderHistory()}
     <p class="footer-note">Données stockées uniquement sur cet appareil · Mission Famille</p>
   `;
@@ -834,31 +792,6 @@ function bindCalendar(){
   };
 }
 
-function renderStats(){
-  const child = getChild(activeChildId);
-  const streak = computeStreak(child.id);
-  const series = weeklyPointsSeries(child.id);
-  const euros = totalEuros(child.id);
-  const max = Math.max(1, ...series);
-  const bars = series.map((value, index) => {
-    const pct = Math.max(4, Math.round((value / max) * 100));
-    const isCurrent = index === series.length - 1;
-    return `<div class="stat-bar-wrap" title="${value} pt(s)"><div class="stat-bar ${isCurrent ? 'current' : ''}" style="height:${pct}%"></div></div>`;
-  }).join('');
-  return `
-  <section class="stats-panel" aria-labelledby="stats-title">
-    <div class="stats-head">
-      <div><h2 id="stats-title">📈 Statistiques</h2><span class="calendar-child">${escapeHtml(child.name)}</span></div>
-      <div class="stats-badges">
-        <div class="euro-badge" title="Argent gagné via les récompenses mensuelles validées">💶 ${euros} € récoltés</div>
-        <div class="streak-badge" title="Jours consécutifs avec toutes les missions faites">🔥 ${streak} jour${streak > 1 ? 's' : ''}</div>
-      </div>
-    </div>
-    <div class="stats-chart">${bars}</div>
-    <div class="stats-caption">Points gagnés par semaine (8 dernières semaines)</div>
-  </section>`;
-}
-
 function logicDoneCount(childId, gameId){
   return state.logicProgress[childId]?.[gameId]?.length || 0;
 }
@@ -867,19 +800,39 @@ function renderLogicGames(){
   const child = getChild(activeChildId);
   const totalDone = LOGIC_GAMES.reduce((sum, game) => sum + logicDoneCount(child.id, game.id), 0);
   return `
-  <section class="logic-panel" aria-labelledby="logic-title">
-    <div class="logic-head"><div><h2 id="logic-title">🧠 Jeux de logique</h2><p>50 exercices pour entraîner sa réflexion</p></div><strong>${totalDone} / 50 réussis</strong></div>
-    <div class="logic-games">${LOGIC_GAMES.map(game => `
-      <button class="logic-game" data-logic-game="${game.id}">
-        <span class="logic-icon">${game.icon}</span><span class="logic-game-text"><strong>${game.title}</strong><small>${game.description}</small></span><span class="logic-score">${logicDoneCount(child.id, game.id)} / 10</span>
-      </button>`).join('')}</div>
+  <section class="logic-panel logic-teaser" aria-labelledby="logic-title">
+    <div>
+      <h2 id="logic-title">🗺️ Défis du Royaume</h2>
+      <p>${totalDone} / 50 défis réussis · Calcul mental &amp; logique</p>
+    </div>
+    <button class="btn btn-gold" id="btn-open-logic-menu">Jouer</button>
   </section>`;
 }
 
-function bindLogicGames(){
+function openLogicGamesMenu(){
+  const child = getChild(activeChildId);
+  if (!child) return;
+  const rows = LOGIC_GAMES.map(game => `
+    <div class="list-row">
+      <span style="font-size:22px;">${game.icon}</span>
+      <div class="grow"><div class="rname">${escapeHtml(game.title)}</div><div class="rmeta">${escapeHtml(game.description)}</div></div>
+      <button class="btn btn-sm btn-gold" data-logic-game="${game.id}">${logicDoneCount(child.id, game.id)} / 10</button>
+    </div>`).join('');
+  openModal(`
+    <h3 class="modal-title">🗺️ Défis du Royaume</h3>
+    <p class="modal-sub">${escapeHtml(child.name)} · choisis un jeu</p>
+    ${rows}
+    <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-logic-menu">Fermer</button></div>
+  `, { wide: true });
+  document.getElementById('btn-close-logic-menu').onclick = closeModal;
   document.querySelectorAll('[data-logic-game]').forEach(button => {
     button.onclick = () => openLogicGame(button.dataset.logicGame);
   });
+}
+
+function bindLogicGames(){
+  const openBtn = document.getElementById('btn-open-logic-menu');
+  if (openBtn) openBtn.onclick = () => openLogicGamesMenu();
 }
 
 function openLogicGame(gameId){
@@ -1027,17 +980,20 @@ function renderBoard(){
   <div class="board">
     <div class="panel">
       <div class="panel-head">
-        <h2>🗺️ Missions du jour</h2>
+        <h2>⚔️ Quêtes du jour</h2>
         <span class="sub">${escapeHtml(child.name)}</span>
       </div>
       <div class="panel-body">${missionsHtml}</div>
     </div>
     <div class="panel">
       <div class="panel-head">
-        <h2>🎁 Récompenses</h2>
+        <h2>💰 Coffre à récompenses</h2>
         <span class="sub">★ ${getPoints(child.id)} pts</span>
       </div>
-      <div class="panel-body"><div class="reward-list">${monthlyReward}${rewardsHtml}</div></div>
+      <div class="panel-body">
+        ${monthlyReward}
+        <div class="reward-grid">${rewardsHtml}</div>
+      </div>
     </div>
   </div>`;
 }
