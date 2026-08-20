@@ -21,6 +21,7 @@ const THEMES = {
   clair: { label: 'Clair', icon: '☀️' },
   ocean: { label: 'Océan', icon: '🌊' },
   corail: { label: 'Corail', icon: '🌺' },
+  royaume: { label: 'Royaume', icon: '🏰' },
 };
 
 const LOGIC_GAMES = [
@@ -226,6 +227,25 @@ function shuffled(items){
     [result[index], result[randomIndex]] = [result[randomIndex], result[index]];
   }
   return result;
+}
+
+/* Petite pluie de confettis pour célébrer une réussite (mission validée, bonne réponse,
+   récompense débloquée...). Purement visuel, respecte prefers-reduced-motion. */
+function launchConfetti(){
+  const colors = ['var(--gold)', 'var(--coral)', 'var(--sky)', 'var(--green-ok)'];
+  const wrap = document.createElement('div');
+  wrap.className = 'confetti';
+  for (let i = 0; i < 24; i++){
+    const piece = document.createElement('span');
+    piece.style.left = (Math.random() * 100) + 'vw';
+    piece.style.background = colors[i % colors.length];
+    piece.style.animationDuration = (1 + Math.random() * 0.8) + 's';
+    piece.style.animationDelay = (Math.random() * 0.2) + 's';
+    piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '3px';
+    wrap.appendChild(piece);
+  }
+  document.body.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 2200);
 }
 
 function showToast(msg, icon = '✅', action){
@@ -580,6 +600,7 @@ function toggleTask(childId, taskId){
   if (idx === -1){
     list.push(taskId);
     addPoints(childId, task.points);
+    launchConfetti();
   } else {
     list.splice(idx, 1);
     addPoints(childId, -task.points);
@@ -862,15 +883,44 @@ function bindLogicGames(){
 }
 
 function openLogicGame(gameId){
+  renderLogicNodeMap(gameId);
+}
+
+/* Carte des défis : un noeud par exercice (réussi / débloqué / verrouillé), dans l'ordre. */
+function renderLogicNodeMap(gameId){
   const game = LOGIC_GAMES.find(item => item.id === gameId);
   const child = getChild(activeChildId);
   if (!game || !child) return;
-  let questionIndex = game.questions.findIndex((_, index) => !(state.logicProgress[child.id]?.[game.id] || []).includes(index));
-  if (questionIndex < 0){
-    openModal(`<h3 class="modal-title">${game.icon} ${escapeHtml(game.title)}</h3><p class="modal-sub">Les 10 exercices sont déjà réussis par ${escapeHtml(child.name)}.</p><div class="logic-complete">🏆 Jeu terminé</div><div class="modal-actions"><button class="btn btn-gold" id="btn-close-logic">Fermer</button></div>`);
-    document.getElementById('btn-close-logic').onclick = closeModal;
-    return;
-  }
+  const done = state.logicProgress[child.id]?.[game.id] || [];
+  const firstUnsolved = game.questions.findIndex((_, index) => !done.includes(index));
+  const allDone = firstUnsolved < 0;
+  const nodesHtml = game.questions.map((_, index) => {
+    const isDone = done.includes(index);
+    const isUnlocked = index === firstUnsolved;
+    const nodeState = isDone ? 'done' : (isUnlocked ? 'unlocked' : 'locked');
+    const label = isDone ? '✓' : (nodeState === 'locked' ? '🔒' : String(index + 1));
+    return `<button class="node ${nodeState}" ${nodeState === 'locked' ? 'data-locked="1"' : `data-play-index="${index}"`}>${label}</button>`;
+  }).join('');
+  openModal(`
+    <h3 class="modal-title">${game.icon} ${escapeHtml(game.title)}</h3>
+    <p class="modal-sub">${escapeHtml(child.name)} · ${done.length} / 10 réussis</p>
+    ${allDone ? '<div class="logic-complete">🏆 Jeu terminé</div>' : ''}
+    <div class="node-grid">${nodesHtml}</div>
+    <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-logic">Fermer</button></div>
+  `, { wide: true });
+  document.getElementById('btn-close-logic').onclick = closeModal;
+  document.querySelectorAll('[data-play-index]').forEach(button => {
+    button.onclick = () => openLogicQuestion(gameId, parseInt(button.dataset.playIndex, 10));
+  });
+  document.querySelectorAll('[data-locked]').forEach(button => {
+    button.onclick = () => showToast('Termine d\'abord le défi précédent !', '🔒');
+  });
+}
+
+function openLogicQuestion(gameId, questionIndex){
+  const game = LOGIC_GAMES.find(item => item.id === gameId);
+  const child = getChild(activeChildId);
+  if (!game || !child) return;
   let questionOptions = shuffled(game.questions[questionIndex].options);
 
   const renderQuestion = (message = '') => {
@@ -881,9 +931,9 @@ function openLogicGame(gameId){
       <div class="logic-question">${escapeHtml(question.text)}</div>
       <div class="logic-options">${questionOptions.map(option => `<button class="logic-option" data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join('')}</div>
       <p class="logic-feedback">${escapeHtml(message)}</p>
-      <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-logic">Quitter</button></div>
+      <div class="modal-actions"><button class="btn btn-ghost" id="btn-back-map">Carte des défis</button></div>
     `);
-    document.getElementById('btn-close-logic').onclick = closeModal;
+    document.getElementById('btn-back-map').onclick = () => renderLogicNodeMap(gameId);
     document.querySelectorAll('[data-answer]').forEach(button => {
       button.onclick = () => {
         if (button.dataset.answer !== question.answer){
@@ -894,16 +944,10 @@ function openLogicGame(gameId){
         if (!state.logicProgress[child.id][game.id]) state.logicProgress[child.id][game.id] = [];
         if (!state.logicProgress[child.id][game.id].includes(questionIndex)) state.logicProgress[child.id][game.id].push(questionIndex);
         saveData();
-        const nextQuestion = game.questions.findIndex((_, index) => !(state.logicProgress[child.id][game.id] || []).includes(index));
-        if (nextQuestion < 0){
-          closeModal();
-          showToast(`${game.title} terminé !`, '🧠');
-          render();
-          return;
-        }
-        questionIndex = nextQuestion;
-        questionOptions = shuffled(game.questions[questionIndex].options);
-        renderQuestion('Bravo !');
+        launchConfetti();
+        showToast('Bravo !', '🎉');
+        render();
+        renderLogicNodeMap(gameId);
       };
     });
   };
@@ -1060,6 +1104,7 @@ function approveRequest(requestId){
     state.redemptions.unshift({ id: uid('red'), childId: child.id, rewardId: reward.id, rewardLabel: reward.label, rewardIcon: reward.icon, date: new Date().toISOString(), pointsSpent: reward.cost });
     saveData();
   }, `Demande de ${child.name} validée`, '✅');
+  launchConfetti();
   closeModal();
   render();
 }
@@ -1099,6 +1144,7 @@ function confirmMonthlyRedeem(month){
         });
         saveData();
       }, `Récompense de ${amount} € validée pour ${child.name}`, '💶');
+      launchConfetti();
       render();
     }
   });
