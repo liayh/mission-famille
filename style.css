@@ -85,14 +85,140 @@ body[data-theme="corail"]{
   --theme-accent:#e76f51;
 }
 body[data-theme="royaume"]{
-  --theme-bg:#fbf1da;
+  --theme-bg:#0c2a4a;
   --theme-surface:#f6e7bf;
   --theme-surface-strong:#ead49f;
   --theme-border:#c4854a;
   --theme-text:#4a2a15;
   --theme-muted:#8a5330;
   --theme-accent:#d98a0e;
+  --rk-sky-top:#0c2a4a; --rk-sky-mid:#0f4560; --rk-sky-bottom:#0e5c6e;
+  --rk-wood:#8a5330; --rk-wood-light:#c4854a; --rk-wood-dark:#4a2a15; --rk-wood-edge:#2e1a0d;
+  --rk-paper:#f6e7bf; --rk-paper-edge:#d8b876;
+  --rk-gold:#ffcc3d; --rk-gold-deep:#d98a0e; --rk-gold-shadow:#8a5306;
+  --rk-green:#59c24a; --rk-green-deep:#2e8b2a; --rk-green-shadow:#1b5c18;
+  --rk-red:#f0503f; --rk-red-deep:#c22e22; --rk-red-shadow:#7a1b14;
+  --rk-blue:#45b8e0; --rk-blue-deep:#1e86ae; --rk-blue-shadow:#0f5670;
+  --font-display:'Luckiest Guy', 'Fredoka', sans-serif;
 }
+
+/* ---------- thème "Royaume" : habillage complet (bois/or/parchemin, boutons chunky) ---------- */
+body[data-theme="royaume"]{
+  background:
+    radial-gradient(ellipse at 20% -10%, rgba(255,204,61,0.12), transparent 45%),
+    radial-gradient(ellipse at 90% 0%, rgba(69,184,224,0.16), transparent 40%),
+    linear-gradient(180deg, var(--rk-sky-top) 0%, var(--rk-sky-mid) 45%, var(--rk-sky-bottom) 100%);
+}
+body[data-theme="royaume"] .brand-text h1{
+  color:#ffe28a; text-shadow:0 3px 0 var(--rk-wood-dark), 0 5px 8px rgba(0,0,0,.5); -webkit-text-stroke:1px var(--rk-wood-dark);
+}
+body[data-theme="royaume"] .brand-text p{color:#d8cbee;}
+body[data-theme="royaume"] .compass{filter:drop-shadow(0 2px 0 rgba(0,0,0,.5));}
+
+body[data-theme="royaume"] .icon-btn{
+  background:linear-gradient(180deg, rgba(255,255,255,.16), rgba(0,0,0,.18)); border:2px solid rgba(255,255,255,.2); color:#fff;
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.2), 0 4px 0 rgba(0,0,0,.3), 0 6px 8px rgba(0,0,0,.3);
+}
+body[data-theme="royaume"] .icon-btn:hover{background:linear-gradient(180deg, rgba(255,255,255,.22), rgba(0,0,0,.14));}
+body[data-theme="royaume"] .icon-btn:active{transform:translateY(2px); box-shadow:inset 0 2px 0 rgba(255,255,255,.2), 0 1px 0 rgba(0,0,0,.3);}
+
+body[data-theme="royaume"] .child-tab{
+  background:linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.12)); border:3px solid rgba(255,255,255,0.18);
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.15), 0 6px 0 rgba(0,0,0,.28), 0 10px 16px rgba(0,0,0,.4);
+}
+body[data-theme="royaume"] .child-tab.active{border-color:var(--rk-gold); box-shadow:inset 0 2px 0 rgba(255,255,255,.15), 0 6px 0 var(--rk-gold-shadow), 0 10px 16px rgba(0,0,0,.4);}
+body[data-theme="royaume"] .xp-ring-bg{stroke:rgba(255,255,255,.2);}
+body[data-theme="royaume"] .xp-ring-fg{stroke:var(--rk-gold);}
+body[data-theme="royaume"] .child-name{color:#fff;}
+body[data-theme="royaume"] .child-points{color:#ffe28a;}
+body[data-theme="royaume"] .add-child-tab{border-color:rgba(255,255,255,.3); color:#d8cbee;}
+
+body[data-theme="royaume"] .backup-reminder,
+body[data-theme="royaume"] .stats-panel,
+body[data-theme="royaume"] .calendar-panel,
+body[data-theme="royaume"] .history-strip{
+  background:linear-gradient(180deg, var(--rk-wood-light) 0%, var(--rk-wood) 45%, var(--rk-wood-dark) 100%);
+  border:4px solid var(--rk-wood-edge); border-radius:16px;
+  box-shadow:inset 0 3px 0 rgba(255,255,255,.25), inset 0 -6px 10px rgba(0,0,0,.35), 0 8px 0 rgba(0,0,0,.3), 0 14px 20px rgba(0,0,0,.4);
+}
+body[data-theme="royaume"] .stats-head h2,
+body[data-theme="royaume"] .calendar-head h2,
+body[data-theme="royaume"] .history-strip h3{color:#ffe28a; text-shadow:0 2px 0 rgba(0,0,0,.4);}
+body[data-theme="royaume"] .calendar-child, body[data-theme="royaume"] .calendar-weekdays,
+body[data-theme="royaume"] .calendar-legend, body[data-theme="royaume"] .history-empty,
+body[data-theme="royaume"] .history-item, body[data-theme="royaume"] .stats-caption{color:#d8cbee;}
+body[data-theme="royaume"] .calendar-nav{color:var(--rk-gold);}
+body[data-theme="royaume"] .calendar-day{border-color:rgba(255,255,255,.25); color:#fff; background:rgba(0,0,0,.12);}
+body[data-theme="royaume"] .calendar-nav .icon-mini{background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.25); color:#fff;}
+body[data-theme="royaume"] .streak-badge, body[data-theme="royaume"] .euro-badge{background:rgba(0,0,0,.22); border-color:rgba(255,255,255,.2);}
+body[data-theme="royaume"] .footer-note{color:#d8cbee;}
+
+body[data-theme="royaume"] .empty-state{
+  background:linear-gradient(180deg, var(--rk-wood-light) 0%, var(--rk-wood) 45%, var(--rk-wood-dark) 100%);
+  border:4px solid var(--rk-wood-edge);
+}
+body[data-theme="royaume"] .empty-state h2{color:#ffe28a;}
+body[data-theme="royaume"] .empty-state p{color:#d8cbee;}
+
+body[data-theme="royaume"] .panel,
+body[data-theme="royaume"] .modal-box,
+body[data-theme="royaume"] .task-item,
+body[data-theme="royaume"] .reward-card,
+body[data-theme="royaume"] .monthly-reward,
+body[data-theme="royaume"] .list-row,
+body[data-theme="royaume"] .request-row,
+body[data-theme="royaume"] .field input,
+body[data-theme="royaume"] .pin-key,
+body[data-theme="royaume"] .emoji-opt,
+body[data-theme="royaume"] .settings-tab,
+body[data-theme="royaume"] .theme-choice,
+body[data-theme="royaume"] .icon-mini,
+body[data-theme="royaume"] .logic-question,
+body[data-theme="royaume"] .logic-option{
+  background:linear-gradient(180deg, var(--rk-paper) 0%, #ead49f 100%); border-color:var(--rk-paper-edge); color:var(--rk-wood-dark);
+}
+body[data-theme="royaume"] .panel{border:3px solid var(--rk-paper-edge); box-shadow:0 4px 0 rgba(0,0,0,.25), 0 6px 10px rgba(0,0,0,.3);}
+body[data-theme="royaume"] .modal-box{border:4px solid var(--rk-paper-edge); box-shadow:0 6px 0 rgba(0,0,0,.25), 0 10px 16px rgba(0,0,0,.35);}
+body[data-theme="royaume"] .panel-head h2, body[data-theme="royaume"] .modal-title{color:var(--rk-wood-dark); font-family:var(--font-display); letter-spacing:.02em;}
+body[data-theme="royaume"] .task-item, body[data-theme="royaume"] .reward-card, body[data-theme="royaume"] .monthly-reward,
+body[data-theme="royaume"] .list-row, body[data-theme="royaume"] .request-row{border-width:3px; box-shadow:0 4px 0 rgba(0,0,0,.2);}
+body[data-theme="royaume"] .task-item.done{background:linear-gradient(180deg,#dff3d6,#bfe6ae); border-color:#8fc97c;}
+body[data-theme="royaume"] .task-label, body[data-theme="royaume"] .reward-name, body[data-theme="royaume"] .rname{font-family:var(--font-display); letter-spacing:.01em; font-weight:normal;}
+body[data-theme="royaume"] .checkbox{border-color:var(--rk-wood);}
+body[data-theme="royaume"] .task-item.done .checkbox{background:var(--rk-green); border-color:var(--rk-green-deep);}
+body[data-theme="royaume"] .progress-fill{background:linear-gradient(90deg, var(--rk-gold-deep), var(--rk-gold));}
+
+body[data-theme="royaume"] .btn3d, body[data-theme="royaume"] .btn{
+  border:none; text-shadow:0 2px 0 rgba(0,0,0,0.35); transition:transform .07s ease, box-shadow .07s ease;
+}
+body[data-theme="royaume"] .btn-gold, body[data-theme="royaume"] .btn-primary{
+  background:linear-gradient(180deg, #ffe28a 0%, var(--rk-gold) 55%, var(--rk-gold-deep) 100%);
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.6), inset 0 -4px 0 rgba(0,0,0,.15), 0 5px 0 var(--rk-gold-shadow), 0 8px 12px rgba(0,0,0,.35);
+  color:#5b3a05; text-shadow:0 1px 0 rgba(255,255,255,.4);
+}
+body[data-theme="royaume"] .btn-ghost{
+  background:linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,.2)); color:var(--rk-wood-dark); border:2px solid var(--rk-paper-edge);
+  box-shadow:0 3px 0 rgba(0,0,0,.15);
+}
+body[data-theme="royaume"] .btn-danger{
+  background:linear-gradient(180deg, #ff8c7d 0%, var(--rk-red) 55%, var(--rk-red-deep) 100%);
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.5), inset 0 -4px 0 rgba(0,0,0,.15), 0 4px 0 var(--rk-red-shadow), 0 6px 10px rgba(0,0,0,.35);
+}
+body[data-theme="royaume"] .btn:active, body[data-theme="royaume"] .icon-mini:active{transform:translateY(3px);}
+
+body[data-theme="royaume"] .settings-tab.active{background:linear-gradient(180deg,#ffe28a,var(--rk-gold-deep)); border-color:var(--rk-gold-shadow); color:#5b3a05;}
+body[data-theme="royaume"] .theme-choice.selected, body[data-theme="royaume"] .theme-choice:hover{border-color:var(--rk-gold-deep);}
+body[data-theme="royaume"] .emoji-opt.selected{border-color:var(--rk-gold-deep);}
+body[data-theme="royaume"] .field label, body[data-theme="royaume"] .help-text, body[data-theme="royaume"] .modal-sub,
+body[data-theme="royaume"] .reward-cost, body[data-theme="royaume"] .reward-status, body[data-theme="royaume"] .rmeta,
+body[data-theme="royaume"] .panel-head .sub, body[data-theme="royaume"] .section-label{color:var(--rk-wood);}
+
+body[data-theme="royaume"] .node.locked{background:linear-gradient(180deg,#8c8c98,#55555f); border-color:#2c2c33;}
+body[data-theme="royaume"] .node.unlocked{background:linear-gradient(180deg,#8fe0f5,var(--rk-blue-deep)); border-color:var(--rk-blue-shadow);}
+body[data-theme="royaume"] .node.done{background:linear-gradient(180deg,#8ce07e,var(--rk-green-deep)); border-color:var(--rk-green-shadow);}
+
+body[data-theme="royaume"] .toast{background:linear-gradient(180deg,#ffe28a,var(--rk-gold-deep)); color:#5b3a05; box-shadow:0 4px 0 var(--rk-gold-shadow), 0 8px 14px rgba(0,0,0,.4);}
+body[data-theme="royaume"] .toast-undo{background:var(--rk-wood-dark); color:#ffe28a;}
 body[data-theme] .topbar{border-bottom-color:var(--theme-border);}
 body[data-theme] .brand-text h1{color:var(--theme-text);}
 body[data-theme] .brand-text p{color:var(--theme-muted);}
