@@ -1,8 +1,15 @@
 /* ==========================================================================
    Mission Famille — logique de l'application
-   Stockage: localStorage (100% local au navigateur, aucune donnée envoyée
-   sur un serveur). Le code PIN parent est haché en SHA-256 avant stockage.
+   Stockage: localStorage par défaut (100% local, aucune donnée envoyée).
+   Synchronisation cloud optionnelle (Firebase) : activable dans Réglages →
+   Sécurité, protège l'accès par un code famille à usage unique, voir la
+   section "synchronisation cloud" plus bas.
+   Le code PIN parent est haché en SHA-256 avant stockage.
    ========================================================================== */
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 const STORAGE_KEY = 'missionFamilleData_v1';
 const SESSION_KEY = 'missionFamilleAdminUnlocked';
@@ -255,6 +262,113 @@ function withUndo(actionFn, message, icon = '✅'){
   });
 }
 
+/* ---------------------------- synchronisation cloud (optionnelle) ---------------------------- */
+
+// La clé apiKey Firebase n'est pas un secret à cacher : elle identifie seulement le projet.
+// L'accès aux données de chaque famille est protégé par le code famille (voir règles Firestore)
+// et par les règles de sécurité côté serveur, pas par cette clé.
+const firebaseConfig = {
+  apiKey: "AIzaSyB_RGvwCZA10XiHONeSwwvh7UikPUOUurU",
+  authDomain: "mission-famille.firebaseapp.com",
+  projectId: "mission-famille",
+  storageBucket: "mission-famille.firebasestorage.app",
+  messagingSenderId: "1024156538990",
+  appId: "1:1024156538990:web:611026df02fa1325bf2e7f",
+};
+const FAMILY_CODE_KEY = 'missionFamilleFamilyCode';
+const FAMILY_CODE_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sans 0/O/1/I/l (ambigus)
+
+let firebaseApp = null;
+let firestoreDb = null;
+let familyDocRef = null;
+let familyUnsubscribe = null;
+
+function getFamilyCode(){
+  return localStorage.getItem(FAMILY_CODE_KEY);
+}
+
+function generateFamilyCode(){
+  const bytes = new Uint8Array(10);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => FAMILY_CODE_CHARSET[b % FAMILY_CODE_CHARSET.length]).join('');
+}
+
+function getFirestoreDb(){
+  if (!firebaseApp){
+    firebaseApp = initializeApp(firebaseConfig);
+    firestoreDb = getFirestore(firebaseApp);
+  }
+  return firestoreDb;
+}
+
+function ensureSignedIn(){
+  const auth = getAuth(firebaseApp || initializeApp(firebaseConfig));
+  if (auth.currentUser) return Promise.resolve(auth.currentUser);
+  return signInAnonymously(auth).then(() => new Promise((resolve, reject) => {
+    const unsub = onAuthStateChanged(auth, user => {
+      if (user){ unsub(); resolve(user); }
+    }, reject);
+  }));
+}
+
+function subscribeToFamily(code){
+  const db = getFirestoreDb();
+  familyDocRef = doc(db, 'families', code);
+  if (familyUnsubscribe) familyUnsubscribe();
+  familyUnsubscribe = onSnapshot(familyDocRef, (snapshot) => {
+    if (!snapshot.exists()) return;
+    state = Object.assign(defaultData(), snapshot.data());
+    applyTheme();
+    if (!activeChildId || !getChild(activeChildId)) activeChildId = state.children[0]?.id || null;
+    render();
+  }, (error) => {
+    console.error('Erreur de synchronisation', error);
+    showToast('Connexion au cloud impossible, données locales utilisées', '⚠️');
+  });
+}
+
+/* Active la synchronisation depuis cet appareil : génère un code famille et publie
+   les données locales actuelles comme point de départ partagé. */
+async function createFamily(){
+  try {
+    await ensureSignedIn();
+    const code = generateFamilyCode();
+    const db = getFirestoreDb();
+    const ref = doc(db, 'families', code);
+    await setDoc(ref, state);
+    localStorage.setItem(FAMILY_CODE_KEY, code);
+    subscribeToFamily(code);
+    return code;
+  } catch (err){
+    console.error(err);
+    return null;
+  }
+}
+
+/* Rejoint une famille existante à partir d'un code donné par un parent. */
+async function joinFamily(code){
+  try {
+    await ensureSignedIn();
+    const db = getFirestoreDb();
+    const ref = doc(db, 'families', code);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return false;
+    localStorage.setItem(FAMILY_CODE_KEY, code);
+    subscribeToFamily(code);
+    return true;
+  } catch (err){
+    console.error(err);
+    return false;
+  }
+}
+
+function leaveFamilySync(){
+  if (familyUnsubscribe) familyUnsubscribe();
+  familyUnsubscribe = null;
+  familyDocRef = null;
+  localStorage.removeItem(FAMILY_CODE_KEY);
+}
+
 /* ---------------------------- stockage ---------------------------- */
 
 function defaultData(){
@@ -351,6 +465,9 @@ function loadData(){
 
 function saveData(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (familyDocRef){
+    setDoc(familyDocRef, state).catch(err => console.error('Erreur de sauvegarde cloud', err));
+  }
 }
 
 function applyTheme(){
@@ -513,11 +630,47 @@ function renderEmptyState(){
     <h2>Créons le carnet de la famille</h2>
     <p>Ajoutez un premier enfant pour commencer à suivre les missions du quotidien (ménage, devoirs) et débloquer des récompenses.</p>
     <button class="btn btn-gold" id="btn-start-setup">Configurer maintenant</button>
+    <button class="btn btn-ghost" id="btn-join-family" style="margin-top:10px;">🔗 Rejoindre une famille existante</button>
   </div>`;
 }
 
 function bindEmptyState(){
   document.getElementById('btn-start-setup').onclick = () => openSetupWizard();
+  const joinBtn = document.getElementById('btn-join-family');
+  if (joinBtn) joinBtn.onclick = () => openJoinFamilyModal();
+}
+
+function openJoinFamilyModal(){
+  openModal(`
+    <h3 class="modal-title">🔗 Rejoindre une famille</h3>
+    <p class="modal-sub">Entrez le code famille donné par vos parents (visible dans leurs Réglages → Sécurité).</p>
+    <div class="field">
+      <label for="family-code-input">Code famille</label>
+      <input type="text" id="family-code-input" maxlength="10" placeholder="Ex : AB3XQ9KLMP" style="text-transform:uppercase; letter-spacing:2px; font-family:var(--font-mono);">
+    </div>
+    <div class="pin-error" id="family-code-error"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btn-cancel">Annuler</button>
+      <button class="btn btn-gold" id="btn-join">Rejoindre</button>
+    </div>
+  `);
+  document.getElementById('btn-cancel').onclick = closeModal;
+  document.getElementById('btn-join').onclick = async () => {
+    const code = document.getElementById('family-code-input').value.trim().toUpperCase();
+    if (!code) return;
+    const btn = document.getElementById('btn-join');
+    btn.disabled = true;
+    btn.textContent = 'Connexion...';
+    const ok = await joinFamily(code);
+    if (ok){
+      closeModal();
+      showToast('Famille rejointe !', '🔗');
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Rejoindre';
+      document.getElementById('family-code-error').textContent = 'Code introuvable, ou connexion internet impossible.';
+    }
+  };
 }
 
 /* ---------------------------- rendu : onglets enfants ---------------------------- */
@@ -1261,6 +1414,20 @@ function appearanceSettingsHtml(){
 
 function securitySettingsHtml(){
   const notifOn = state.notificationsEnabled && 'Notification' in window && Notification.permission === 'granted';
+  const familyCode = getFamilyCode();
+  const cloudSection = familyCode
+    ? `
+    <div class="list-row" style="flex-direction:column; align-items:stretch; gap:8px;">
+      <div class="rname">☁️ Synchronisation active</div>
+      <div class="rmeta">Code famille : <strong style="font-family:var(--font-mono); letter-spacing:2px;">${escapeHtml(familyCode)}</strong></div>
+      <div class="help-text" style="margin:0;">Entrez ce code sur le téléphone de chaque enfant (bouton "Rejoindre une famille existante") pour qu'ils voient les mêmes missions et récompenses en temps réel.</div>
+      <button class="btn btn-ghost btn-sm" id="btn-copy-family-code">Copier le code</button>
+    </div>
+    <button class="btn btn-danger btn-block" id="btn-leave-family" style="margin:10px 0;">Désactiver la synchronisation sur cet appareil</button>
+    `
+    : `
+    <button class="btn btn-ghost btn-block" id="btn-create-family" style="margin-bottom:10px;">☁️ Activer la synchronisation entre appareils</button>
+    `;
   return `
     <p class="help-text" style="margin-bottom:14px;">Le code parent protège les réglages et la validation des récompenses. Il est stocké de façon chiffrée (SHA-256) uniquement sur cet appareil.</p>
     <div class="list-row">
@@ -1268,6 +1435,7 @@ function securitySettingsHtml(){
       <div class="grow"><div class="rname">Notifications</div><div class="rmeta">Être prévenu quand un enfant demande une récompense</div></div>
       <button class="btn btn-sm ${notifOn ? 'btn-gold' : 'btn-ghost'}" id="btn-toggle-notifications">${notifOn ? 'Activées' : 'Activer'}</button>
     </div>
+    ${cloudSection}
     <button class="btn btn-ghost btn-block" id="btn-change-pin" style="margin-bottom:10px;">🔐 Changer le code parent</button>
     <button class="btn btn-ghost btn-block" id="btn-export" style="margin-bottom:10px;">⬇️ Exporter les données (sauvegarde)</button>
     <label class="btn btn-ghost btn-block" style="display:block; text-align:center; margin-bottom:10px; cursor:pointer;">
@@ -1352,6 +1520,34 @@ function bindSettingsContent(){
   // Sécurité
   const notifBtn = document.getElementById('btn-toggle-notifications');
   if (notifBtn) notifBtn.onclick = () => { state.notificationsEnabled ? disableNotifications() : enableNotifications(); };
+  const createFamilyBtn = document.getElementById('btn-create-family');
+  if (createFamilyBtn) createFamilyBtn.onclick = async () => {
+    createFamilyBtn.disabled = true;
+    createFamilyBtn.textContent = 'Activation...';
+    const code = await createFamily();
+    if (code){
+      showToast('Synchronisation activée', '☁️');
+      renderSettingsModal();
+    } else {
+      createFamilyBtn.disabled = false;
+      createFamilyBtn.textContent = '☁️ Activer la synchronisation entre appareils';
+      showToast('Impossible d\'activer la synchronisation, vérifiez votre connexion internet', '⚠️');
+    }
+  };
+  const copyCodeBtn = document.getElementById('btn-copy-family-code');
+  if (copyCodeBtn) copyCodeBtn.onclick = () => {
+    navigator.clipboard.writeText(getFamilyCode() || '').then(() => showToast('Code copié', '📋'));
+  };
+  const leaveFamilyBtn = document.getElementById('btn-leave-family');
+  if (leaveFamilyBtn) leaveFamilyBtn.onclick = () => openConfirmModal({
+    title: 'Désactiver la synchronisation', danger: true, confirmLabel: 'Désactiver',
+    body: `Cet appareil arrêtera de se synchroniser et gardera une copie locale des données actuelles. Les autres appareils connectés avec ce code continueront de se synchroniser entre eux.`,
+    onConfirm: () => {
+      leaveFamilySync();
+      showToast('Synchronisation désactivée sur cet appareil', '☁️');
+      renderSettingsModal();
+    }
+  });
   const changePinBtn = document.getElementById('btn-change-pin');
   if (changePinBtn) changePinBtn.onclick = () => openPinSetupModal(() => { showToast('Code parent modifié', '🔐'); });
   const exportBtn = document.getElementById('btn-export');
@@ -1530,7 +1726,13 @@ function init(){
   applyTheme();
   render();
   if (state.children.length === 0){
-    // premier lancement : accueil avec bouton de configuration (voir renderEmptyState)
+    // premier lancement : accueil avec bouton de configuration ou de connexion (voir renderEmptyState)
+  }
+  const familyCode = getFamilyCode();
+  if (familyCode){
+    ensureSignedIn()
+      .then(() => subscribeToFamily(familyCode))
+      .catch(() => showToast('Connexion au cloud impossible, données locales utilisées', '⚠️'));
   }
   if ('serviceWorker' in navigator){
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
