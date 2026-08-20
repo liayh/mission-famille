@@ -104,6 +104,7 @@ body[data-theme="royaume"]{
 
 /* ---------- thème "Royaume" : habillage complet (bois/or/parchemin, boutons chunky) ---------- */
 body[data-theme="royaume"]{
+  color:#f6e7bf;
   background:
     radial-gradient(ellipse at 20% -10%, rgba(255,204,61,0.12), transparent 45%),
     radial-gradient(ellipse at 90% 0%, rgba(69,184,224,0.16), transparent 40%),
@@ -218,30 +219,30 @@ body[data-theme="royaume"] .node.done{background:linear-gradient(180deg,var(--rk
 
 body[data-theme="royaume"] .toast{background:linear-gradient(180deg,#ffe28a,var(--rk-gold-deep)); color:#5b3a05; box-shadow:0 4px 0 var(--rk-gold-shadow), 0 8px 14px rgba(0,0,0,.4);}
 body[data-theme="royaume"] .toast-undo{background:var(--rk-wood-dark); color:#ffe28a;}
-body[data-theme] .topbar{border-bottom-color:var(--theme-border);}
-body[data-theme] .brand-text h1{color:var(--theme-text);}
-body[data-theme] .brand-text p{color:var(--theme-muted);}
-body[data-theme] .icon-btn,
-body[data-theme] .child-tab{background:var(--theme-surface); border-color:var(--theme-border); color:var(--theme-text);}
-body[data-theme] .child-tab.active{background:var(--theme-surface-strong); border-color:var(--theme-accent);}
-body[data-theme] .child-name{color:var(--theme-text);}
-body[data-theme] .child-points{color:var(--theme-accent);}
-body[data-theme] .add-child-tab{border-color:var(--theme-border); color:var(--theme-muted);}
-body[data-theme] .empty-state,
-body[data-theme] .calendar-panel,
-body[data-theme] .history-strip{background:var(--theme-surface); border-color:var(--theme-border);}
-body[data-theme] .calendar-head h2,
-body[data-theme] .history-strip h3{color:var(--theme-text);}
-body[data-theme] .calendar-child,
-body[data-theme] .calendar-weekdays,
-body[data-theme] .calendar-legend,
-body[data-theme] .history-empty,
-body[data-theme] .history-item{color:var(--theme-muted);}
-body[data-theme] .calendar-nav{color:var(--theme-accent);}
-body[data-theme] .calendar-day{border-color:var(--theme-border); color:var(--theme-text);}
-body[data-theme] .calendar-day.complete{background:rgba(127,176,105,.22);}
-body[data-theme] .calendar-day.partial{background:rgba(242,184,75,.2);}
-body[data-theme] .footer-note{color:var(--theme-muted);}
+body[data-theme]:not([data-theme="royaume"]) .topbar{border-bottom-color:var(--theme-border);}
+body[data-theme]:not([data-theme="royaume"]) .brand-text h1{color:var(--theme-text);}
+body[data-theme]:not([data-theme="royaume"]) .brand-text p{color:var(--theme-muted);}
+body[data-theme]:not([data-theme="royaume"]) .icon-btn,
+body[data-theme]:not([data-theme="royaume"]) .child-tab{background:var(--theme-surface); border-color:var(--theme-border); color:var(--theme-text);}
+body[data-theme]:not([data-theme="royaume"]) .child-tab.active{background:var(--theme-surface-strong); border-color:var(--theme-accent);}
+body[data-theme]:not([data-theme="royaume"]) .child-name{color:var(--theme-text);}
+body[data-theme]:not([data-theme="royaume"]) .child-points{color:var(--theme-accent);}
+body[data-theme]:not([data-theme="royaume"]) .add-child-tab{border-color:var(--theme-border); color:var(--theme-muted);}
+body[data-theme]:not([data-theme="royaume"]) .empty-state,
+body[data-theme]:not([data-theme="royaume"]) .calendar-panel,
+body[data-theme]:not([data-theme="royaume"]) .history-strip{background:var(--theme-surface); border-color:var(--theme-border);}
+body[data-theme]:not([data-theme="royaume"]) .calendar-head h2,
+body[data-theme]:not([data-theme="royaume"]) .history-strip h3{color:var(--theme-text);}
+body[data-theme]:not([data-theme="royaume"]) .calendar-child,
+body[data-theme]:not([data-theme="royaume"]) .calendar-weekdays,
+body[data-theme]:not([data-theme="royaume"]) .calendar-legend,
+body[data-theme]:not([data-theme="royaume"]) .history-empty,
+body[data-theme]:not([data-theme="royaume"]) .history-item{color:var(--theme-muted);}
+body[data-theme]:not([data-theme="royaume"]) .calendar-nav{color:var(--theme-accent);}
+body[data-theme]:not([data-theme="royaume"]) .calendar-day{border-color:var(--theme-border); color:var(--theme-text);}
+body[data-theme]:not([data-theme="royaume"]) .calendar-day.complete{background:rgba(127,176,105,.22);}
+body[data-theme]:not([data-theme="royaume"]) .calendar-day.partial{background:rgba(242,184,75,.2);}
+body[data-theme]:not([data-theme="royaume"]) .footer-note{color:var(--theme-muted);}
 
 /* ---------- layout shell ---------- */
 #app{max-width:1080px; margin:0 auto; padding:20px 18px 64px;}
