@@ -323,6 +323,7 @@ body[data-theme] .footer-note{color:var(--theme-muted);}
 .history-item:last-child{border-bottom:none;}
 .history-refused{color:var(--coral);}
 .history-pending{color:var(--gold);}
+.history-penalty{color:var(--red-danger);}
 .history-item .h-date{font-family:var(--font-mono); font-size:11px; color:var(--gold); flex:none; width:78px;}
 
 /* ---------- modals ---------- */
