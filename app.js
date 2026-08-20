@@ -586,7 +586,10 @@ function renderTopbar(){
         <p>${escapeHtml(formatDateLong())}</p>
       </div>
     </div>
-    <button class="icon-btn parent-account-btn" id="btn-settings" title="Compte parent${requestCount ? ` : ${requestCount} demande(s)` : ''}" aria-label="Compte parent${requestCount ? `, ${requestCount} demande(s) en attente` : ''}">👨‍👩‍👧${requestCount ? `<span class="notification-badge">${requestCount}</span>` : ''}</button>
+    <div class="topbar-actions">
+      <button class="icon-btn" id="btn-close-app" title="Fermer et supprimer les données (code parent requis)" aria-label="Fermer et supprimer les données, code parent requis">🔒</button>
+      <button class="icon-btn parent-account-btn" id="btn-settings" title="Compte parent${requestCount ? ` : ${requestCount} demande(s)` : ''}" aria-label="Compte parent${requestCount ? `, ${requestCount} demande(s) en attente` : ''}">👨‍👩‍👧${requestCount ? `<span class="notification-badge">${requestCount}</span>` : ''}</button>
+    </div>
   </div>`;
 }
 
@@ -1565,9 +1568,15 @@ function bindSettingsContent(){
   const importInput = document.getElementById('btn-import');
   if (importInput) importInput.onchange = importData;
   const resetAllBtn = document.getElementById('btn-reset-all');
-  if (resetAllBtn) resetAllBtn.onclick = () => openConfirmModal({
+  if (resetAllBtn) resetAllBtn.onclick = () => confirmResetAll();
+}
+
+/* Réinitialise entièrement les données de cet appareil, après confirmation.
+   Utilisée par Réglages → Sécurité et par le bouton 🔒 de fermeture rapide. */
+function confirmResetAll(){
+  openConfirmModal({
     title: 'Réinitialiser toute l\'application', danger: true, confirmLabel: 'Tout réinitialiser',
-    body: `Cette action supprime <strong>tous les enfants, missions, récompenses et points</strong>. Un bouton "Annuler" reste disponible juste après si besoin.`,
+    body: `Cette action supprime <strong>tous les enfants, missions, récompenses et points</strong> sur cet appareil. Un bouton "Annuler" reste disponible juste après si besoin.`,
     onConfirm: () => {
       withUndo(() => {
         setAdminUnlocked(false);
@@ -1579,6 +1588,16 @@ function bindSettingsContent(){
       render();
     }
   });
+}
+
+/* Bouton 🔒 de la barre du haut : redemande le code parent même si déjà déverrouillé,
+   puis propose de tout supprimer sur cet appareil. */
+function openCloseAppFlow(){
+  if (!state.pinHash){
+    requireAdmin(() => confirmResetAll());
+    return;
+  }
+  openPinPromptModal(() => confirmResetAll());
 }
 
 /* ---------------------------- formulaire : mission ---------------------------- */
@@ -1793,6 +1812,8 @@ function importData(e){
 function bindTopbar(){
   const btn = document.getElementById('btn-settings');
   if (btn) btn.onclick = openSettingsPanel;
+  const closeBtn = document.getElementById('btn-close-app');
+  if (closeBtn) closeBtn.onclick = openCloseAppFlow;
 }
 
 /* ---------------------------- démarrage ---------------------------- */

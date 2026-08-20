@@ -130,6 +130,7 @@ body[data-theme] .footer-note{color:var(--theme-muted);}
 }
 .icon-btn:hover{background:var(--ink-600); transform:translateY(-1px);}
 .icon-btn:active{transform:translateY(1px);}
+.topbar-actions{display:flex; align-items:center; gap:8px;}
 .parent-account-btn{position:relative;}
 .notification-badge{position:absolute; top:-7px; right:-7px; min-width:20px; height:20px; padding:0 5px; border-radius:10px; background:var(--coral); color:#fff; border:2px solid var(--ink-900); font-family:var(--font-mono); font-size:10px; display:flex; align-items:center; justify-content:center;}
 .icon-btn:focus-visible, button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focus-visible{
