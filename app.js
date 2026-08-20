@@ -226,7 +226,7 @@ function showToast(msg, icon = '✅', action){
   if (existing) existing.remove();
   const t = document.createElement('div');
   t.className = 'toast';
-  t.innerHTML = `<span>${icon}</span><span>${escapeHtml(msg)}</span>${action ? `<button class="toast-undo" id="toast-undo-btn">${escapeHtml(action.label)}</button>` : ''}`;
+  t.innerHTML = `<span>${escapeHtml(icon)}</span><span>${escapeHtml(msg)}</span>${action ? `<button class="toast-undo" id="toast-undo-btn">${escapeHtml(action.label)}</button>` : ''}`;
   document.body.appendChild(t);
   const timer = setTimeout(() => t.remove(), action ? 6000 : 2400);
   if (action){
@@ -531,7 +531,7 @@ function xpRingSvg(percent, avatar){
       <circle class="xp-ring-bg" cx="26" cy="26" r="${r}"></circle>
       <circle class="xp-ring-fg" cx="26" cy="26" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="${offset}"></circle>
     </svg>
-    <div class="xp-avatar">${avatar}</div>
+    <div class="xp-avatar">${escapeHtml(avatar)}</div>
   </div>`;
 }
 
@@ -544,8 +544,8 @@ function renderChildRow(){
       ${xpRingSvg(pct, c.avatar)}
       <div class="child-meta">
         <span class="child-name">${escapeHtml(c.name)}</span>
-        <span class="child-points">★ ${getPoints(c.id)} pts</span>
-        ${euros > 0 ? `<span class="child-euros">💶 ${euros} € récoltés</span>` : ''}
+        <span class="child-points">★ ${escapeHtml(getPoints(c.id))} pts</span>
+        ${euros > 0 ? `<span class="child-euros">💶 ${escapeHtml(euros)} € récoltés</span>` : ''}
       </div>
     </button>`;
   }).join('');
@@ -719,7 +719,7 @@ function renderBoard(){
         <div class="checkbox">${done ? '✓' : ''}</div>
         <span class="task-label">${escapeHtml(t.label)}</span>
         <span class="task-tag ${t.type}">${t.type === 'menage' ? 'Ménage' : 'Devoir'}</span>
-        <span class="task-points">+${t.points}</span>
+        <span class="task-points">+${escapeHtml(t.points)}</span>
       </div>`;
     }).join('');
     return `<div class="section-label">${label}</div><div class="task-list">${rows}</div>`;
@@ -738,10 +738,10 @@ function renderBoard(){
         return `
         <div class="reward-card ${unlocked ? 'unlocked' : ''}">
           <div class="reward-top">
-            <div class="reward-icon">${r.icon}</div>
+            <div class="reward-icon">${escapeHtml(r.icon)}</div>
             <div class="grow">
               <div class="reward-name">${escapeHtml(r.label)}</div>
-              <div class="reward-cost">${r.cost} pts</div>
+              <div class="reward-cost">${escapeHtml(r.cost)} pts</div>
             </div>
           </div>
           <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
@@ -818,7 +818,7 @@ function openParentRequests(){
     const child = getChild(request.childId);
     const reward = state.rewards.find(item => item.id === request.rewardId);
     if (!child || !reward) return '';
-    return `<div class="request-row"><div class="grow"><strong>${child.avatar} ${escapeHtml(child.name)}</strong><span>demande ${reward.icon} ${escapeHtml(reward.label)} (${reward.cost} pts)</span></div><div class="row-actions"><button class="btn btn-sm btn-gold" data-approve-request="${request.id}">Valider</button><button class="icon-mini" data-reject-request="${request.id}" title="Refuser">✕</button></div></div>`;
+    return `<div class="request-row"><div class="grow"><strong>${escapeHtml(child.avatar)} ${escapeHtml(child.name)}</strong><span>demande ${escapeHtml(reward.icon)} ${escapeHtml(reward.label)} (${escapeHtml(reward.cost)} pts)</span></div><div class="row-actions"><button class="btn btn-sm btn-gold" data-approve-request="${request.id}">Valider</button><button class="icon-mini" data-reject-request="${request.id}" title="Refuser">✕</button></div></div>`;
   }).join('');
   const childNames = [...new Set(state.pendingRequests.map(request => getChild(request.childId)?.name).filter(Boolean))];
   const namesLabel = childNames.length ? childNames.join(' et ') : 'vos enfants';
@@ -897,7 +897,7 @@ function confirmRedeem(rewardId){
   if (!child || !reward) return;
   openConfirmModal({
     title: 'Confirmer la récompense',
-    body: `Valider que <strong>${escapeHtml(child.name)}</strong> utilise <strong>${reward.icon} ${escapeHtml(reward.label)}</strong> pour <strong>${reward.cost} pts</strong> ?`,
+    body: `Valider que <strong>${escapeHtml(child.name)}</strong> utilise <strong>${escapeHtml(reward.icon)} ${escapeHtml(reward.label)}</strong> pour <strong>${escapeHtml(reward.cost)} pts</strong> ?`,
     confirmLabel: 'Valider',
     onConfirm: () => {
       addPoints(child.id, -reward.cost);
@@ -923,7 +923,7 @@ function renderHistory(){
     const dateLabel = new Date(request.date).toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit' });
     return `<div class="history-item history-pending">
       <span class="h-date">${dateLabel}</span>
-      <span>🔔 <strong>${escapeHtml(child.name)}</strong> demande « ${escapeHtml(reward.label)} » (${reward.cost} pts) - en attente du parent</span>
+      <span>🔔 <strong>${escapeHtml(child.name)}</strong> demande « ${escapeHtml(reward.label)} » (${escapeHtml(reward.cost)} pts) - en attente du parent</span>
     </div>`;
   }).join('');
   const recent = state.redemptions.slice(0, 8);
@@ -939,10 +939,10 @@ function renderHistory(){
             <span>↩️ <strong>${escapeHtml(c ? c.name : '?')}</strong> : demande refusée pour « ${escapeHtml(r.rewardLabel)} » (points conservés)</span>
           </div>`;
         }
-        const rewardValue = r.kind === 'monthly' ? '20 €' : `-${r.pointsSpent} pts`;
+        const rewardValue = r.kind === 'monthly' ? '20 €' : `-${escapeHtml(r.pointsSpent)} pts`;
         return `<div class="history-item">
           <span class="h-date">${dateLabel}</span>
-          <span>${r.rewardIcon} <strong>${escapeHtml(c ? c.name : '?')}</strong> ${r.kind === 'monthly' ? 'a gagné' : 'a utilisé'} « ${escapeHtml(r.rewardLabel)} » (${rewardValue})</span>
+          <span>${escapeHtml(r.rewardIcon)} <strong>${escapeHtml(c ? c.name : '?')}</strong> ${r.kind === 'monthly' ? 'a gagné' : 'a utilisé'} « ${escapeHtml(r.rewardLabel)} » (${rewardValue})</span>
         </div>`;
       }).join('');
   return `<div class="history-strip"><h3>📜 Journal des récompenses</h3>${rows}</div>`;
@@ -1209,8 +1209,8 @@ function renderSettingsContent(){
 function childrenSettingsHtml(){
   const rows = state.children.map(c => `
     <div class="list-row">
-      <span style="font-size:22px;">${c.avatar}</span>
-      <div class="grow"><div class="rname">${escapeHtml(c.name)}</div><div class="rmeta">★ ${getPoints(c.id)} pts</div></div>
+      <span style="font-size:22px;">${escapeHtml(c.avatar)}</span>
+      <div class="grow"><div class="rname">${escapeHtml(c.name)}</div><div class="rmeta">★ ${escapeHtml(getPoints(c.id))} pts</div></div>
       <div class="row-actions">
         <button class="icon-mini" data-edit-child="${c.id}" title="Modifier">✏️</button>
         <button class="icon-mini" data-reset-points="${c.id}" title="Réinitialiser les points">↺</button>
@@ -1225,7 +1225,7 @@ function tasksSettingsHtml(){
     <div class="list-row">
       <div class="grow">
         <div class="rname">${escapeHtml(t.label)}</div>
-        <div class="rmeta">${t.type === 'menage' ? 'Ménage' : 'Devoir'} · +${t.points} pts${t.schoolDaysOnly ? ' · jours d\'école' : ''}</div>
+        <div class="rmeta">${t.type === 'menage' ? 'Ménage' : 'Devoir'} · +${escapeHtml(t.points)} pts${t.schoolDaysOnly ? ' · jours d\'école' : ''}</div>
       </div>
       <div class="row-actions">
         <button class="icon-mini" data-edit-task="${t.id}" title="Modifier">✏️</button>
@@ -1238,8 +1238,8 @@ function tasksSettingsHtml(){
 function rewardsSettingsHtml(){
   const rows = state.rewards.map(r => `
     <div class="list-row">
-      <span style="font-size:22px;">${r.icon}</span>
-      <div class="grow"><div class="rname">${escapeHtml(r.label)}</div><div class="rmeta">${r.cost} pts</div></div>
+      <span style="font-size:22px;">${escapeHtml(r.icon)}</span>
+      <div class="grow"><div class="rname">${escapeHtml(r.label)}</div><div class="rmeta">${escapeHtml(r.cost)} pts</div></div>
       <div class="row-actions">
         <button class="icon-mini" data-edit-reward="${r.id}" title="Modifier">✏️</button>
         <button class="icon-mini" data-del-reward="${r.id}" title="Supprimer">🗑️</button>
@@ -1491,6 +1491,71 @@ function exportData(){
   render();
 }
 
+/* Nettoie un objet de sauvegarde importé : un fichier JSON peut avoir été modifié ou fabriqué
+   par un tiers, donc chaque champ affiché ensuite (avatar, icône, libellé, points...) est
+   contraint à un type/format sûr avant d'entrer dans l'état de l'application. Les identifiants
+   valides sont conservés (pour ne pas casser les liens avec l'historique) ; les autres sont
+   régénérés. */
+function sanitizeImportedState(parsed){
+  const idPattern = /^[A-Za-z0-9_-]{1,40}$/;
+  const idOrGen = (id, prefix) => (typeof id === 'string' && idPattern.test(id)) ? id : uid(prefix);
+  const safeStr = (v, maxLen, fallback = '') => (typeof v === 'string' ? v.slice(0, maxLen) : fallback);
+  const safeNum = (v, min, max, fallback) => (Number.isFinite(v) ? Math.max(min, Math.min(max, Math.round(v))) : fallback);
+
+  const children = (Array.isArray(parsed.children) ? parsed.children : []).map(c => ({
+    id: idOrGen(c?.id, 'c'),
+    name: safeStr(c?.name, 24, 'Enfant'),
+    avatar: EMOJIS.includes(c?.avatar) ? c.avatar : EMOJIS[0],
+  }));
+
+  const tasks = (Array.isArray(parsed.tasks) ? parsed.tasks : []).map(t => ({
+    id: idOrGen(t?.id, 't'),
+    label: safeStr(t?.label, 60, 'Mission'),
+    type: t?.type === 'devoir' ? 'devoir' : 'menage',
+    points: safeNum(t?.points, 1, 100, 1),
+    schoolDaysOnly: !!t?.schoolDaysOnly,
+  }));
+
+  const rewards = (Array.isArray(parsed.rewards) ? parsed.rewards : []).map(r => ({
+    id: idOrGen(r?.id, 'r'),
+    label: safeStr(r?.label, 40, 'Récompense'),
+    icon: REWARD_ICONS.includes(r?.icon) ? r.icon : REWARD_ICONS[0],
+    cost: safeNum(r?.cost, 1, 1000, 1),
+  }));
+
+  const safeIconOrMonthly = (icon) => (icon === '💶' || REWARD_ICONS.includes(icon)) ? icon : REWARD_ICONS[0];
+
+  const redemptions = (Array.isArray(parsed.redemptions) ? parsed.redemptions : []).map(r => ({
+    id: idOrGen(r?.id, 'red'),
+    ...(r?.kind === 'monthly' || r?.kind === 'request' ? { kind: r.kind } : {}),
+    ...(r?.status === 'refused' ? { status: 'refused' } : {}),
+    childId: safeStr(r?.childId, 40),
+    ...(r?.rewardId !== undefined ? { rewardId: safeStr(r.rewardId, 40) } : {}),
+    ...(r?.month !== undefined ? { month: safeStr(r.month, 7) } : {}),
+    rewardLabel: safeStr(r?.rewardLabel, 40, 'Récompense'),
+    rewardIcon: safeIconOrMonthly(r?.rewardIcon),
+    date: safeStr(r?.date, 40, new Date().toISOString()),
+    pointsSpent: safeNum(r?.pointsSpent, 0, 1000, 0),
+    ...(r?.amount !== undefined ? { amount: safeNum(r.amount, 0, 1000, 0) } : {}),
+  }));
+
+  const pendingRequests = (Array.isArray(parsed.pendingRequests) ? parsed.pendingRequests : []).map(req => ({
+    id: idOrGen(req?.id, 'req'),
+    childId: safeStr(req?.childId, 40),
+    rewardId: safeStr(req?.rewardId, 40),
+    date: safeStr(req?.date, 40, new Date().toISOString()),
+  }));
+
+  const points = {};
+  if (parsed.points && typeof parsed.points === 'object'){
+    Object.entries(parsed.points).forEach(([childId, value]) => {
+      points[childId] = safeNum(value, 0, 1000000, 0);
+    });
+  }
+
+  return { children, tasks, rewards, redemptions, pendingRequests, points };
+}
+
 function importData(e){
   const file = e.target.files[0];
   if (!file) return;
@@ -1498,11 +1563,12 @@ function importData(e){
   reader.onload = () => {
     try {
       const parsed = JSON.parse(reader.result);
-      if (!parsed.children || !parsed.tasks || !parsed.rewards){
+      if (!parsed || !Array.isArray(parsed.children) || !Array.isArray(parsed.tasks) || !Array.isArray(parsed.rewards)){
         showToast('Fichier invalide', '⚠️');
         return;
       }
-      state = Object.assign(defaultData(), parsed);
+      const clean = sanitizeImportedState(parsed);
+      state = Object.assign(defaultData(), parsed, clean);
       applyTheme();
       saveData();
       activeChildId = state.children[0]?.id || null;
