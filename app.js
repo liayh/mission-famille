@@ -317,10 +317,13 @@ function subscribeToFamily(code){
   if (familyUnsubscribe) familyUnsubscribe();
   familyUnsubscribe = onSnapshot(familyDocRef, (snapshot) => {
     if (!snapshot.exists()) return;
-    state = Object.assign(defaultData(), snapshot.data());
+    const data = Object.assign(defaultData(), snapshot.data());
+    const migrated = migrateData(data);
+    state = data;
     applyTheme();
     if (!activeChildId || !getChild(activeChildId)) activeChildId = state.children[0]?.id || null;
     render();
+    if (migrated) saveData();
   }, (error) => {
     console.error('Erreur de synchronisation', error);
     showToast('Connexion au cloud impossible, données locales utilisées', '⚠️');
@@ -380,28 +383,26 @@ function defaultData(){
     lastExportAt: null,
     children: [],
     tasks: [
-      { id: uid('t'), label: 'Ranger sa chambre', type: 'menage', points: 5, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Faire son lit', type: 'menage', points: 3, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Ranger ses affaires', type: 'menage', points: 4, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Mettre la table', type: 'menage', points: 3, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Débarrasser / vaisselle', type: 'menage', points: 4, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Mettre ou débarrasser la table', type: 'menage', points: 4, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Vider le lave-vaisselle', type: 'menage', points: 3, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Remplir le lave-vaisselle', type: 'menage', points: 3, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Sortir les poubelles', type: 'menage', points: 3, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Aider ses parents', type: 'menage', points: 5, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Aider à préparer le repas', type: 'menage', points: 5, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Nourrir l’animal', type: 'menage', points: 3, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Arroser les plantes', type: 'menage', points: 2, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Faire les devoirs', type: 'devoir', points: 8, schoolDaysOnly: true },
-      { id: uid('t'), label: 'Lire 15 minutes', type: 'devoir', points: 4, schoolDaysOnly: false },
-      { id: uid('t'), label: 'Lire 30 minutes', type: 'devoir', points: 8, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Ranger sa chambre', type: 'menage', points: 4, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Faire son lit', type: 'menage', points: 2, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Ranger ses affaires', type: 'menage', points: 3, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Mettre ou débarrasser la table', type: 'menage', points: 2, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Vider le lave-vaisselle', type: 'menage', points: 2, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Remplir le lave-vaisselle', type: 'menage', points: 2, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Sortir les poubelles', type: 'menage', points: 1, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Aider ses parents', type: 'menage', points: 3, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Aider à préparer le repas', type: 'menage', points: 4, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Nourrir l’animal', type: 'menage', points: 1, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Arroser les plantes', type: 'menage', points: 1, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Faire les devoirs', type: 'devoir', points: 6, schoolDaysOnly: true },
+      { id: uid('t'), label: 'Lire 15 minutes', type: 'devoir', points: 2, schoolDaysOnly: false },
+      { id: uid('t'), label: 'Lire 30 minutes', type: 'devoir', points: 4, schoolDaysOnly: false },
     ],
     rewards: [
       { id: uid('r'), label: 'Télévision / écran', icon: '📺', cost: 15 },
-      { id: uid('r'), label: 'Nintendo Switch', icon: '🎮', cost: 25 },
-      { id: uid('r'), label: 'Cinéma', icon: '🎬', cost: 50 },
-      { id: uid('r'), label: 'Restaurant', icon: '🍽️', cost: 80 },
+      { id: uid('r'), label: 'Nintendo Switch', icon: '🎮', cost: 30 },
+      { id: uid('r'), label: 'Cinéma', icon: '🎬', cost: 70 },
+      { id: uid('r'), label: 'Restaurant', icon: '🍽️', cost: 120 },
     ],
     monthlyRewardEnabled: true,  // récompense en argent pour un mois de missions complet
     monthlyRewardAmount: 20,     // montant en euros de cette récompense
@@ -413,6 +414,92 @@ function defaultData(){
   };
 }
 
+/* Normalise et migre un objet de données (locale ou reçue du cloud) vers l'état le plus
+   récent, en une seule fois par étape de migration (marquée par un indicateur dans les
+   données elles-mêmes). Retourne true si quelque chose a changé (donc à re-sauvegarder). */
+function migrateData(data){
+  let changed = false;
+  if (!Array.isArray(data.redemptions)) data.redemptions = [];
+  if (!Array.isArray(data.pendingRequests)) data.pendingRequests = [];
+  if (!data.logicProgress || typeof data.logicProgress !== 'object') data.logicProgress = {};
+
+  // Migration ponctuelle (une seule fois) : ajoute les missions ménage introduites
+  // après la première version, sans les ré-ajouter si le parent les a supprimées ensuite.
+  if (!data.extraTasksMigrated_v2){
+    if (!data.tasks.some(task => task.label === 'Aider ses parents')){
+      data.tasks.push({ id: uid('t'), label: 'Aider ses parents', type: 'menage', points: 3, schoolDaysOnly: false });
+    }
+    const extraTasks = [
+      ['Faire son lit', 2],
+      ['Ranger ses affaires', 3],
+      ['Aider à préparer le repas', 4],
+      ['Nourrir l’animal', 1],
+      ['Arroser les plantes', 1],
+    ];
+    extraTasks.forEach(([label, points]) => {
+      if (!data.tasks.some(task => task.label === label)){
+        data.tasks.push({ id: uid('t'), label, type: 'menage', points, schoolDaysOnly: false });
+      }
+    });
+    data.extraTasksMigrated_v2 = true;
+    changed = true;
+  }
+  // Migration ponctuelle v3 : missions table/lave-vaisselle/lecture ajoutées ensuite.
+  if (!data.extraTasksMigrated_v3){
+    const extraTasksV3 = [
+      ['Mettre ou débarrasser la table', 'menage', 2, false],
+      ['Vider le lave-vaisselle', 'menage', 2, false],
+      ['Remplir le lave-vaisselle', 'menage', 2, false],
+      ['Lire 30 minutes', 'devoir', 4, false],
+    ];
+    extraTasksV3.forEach(([label, type, points, schoolDaysOnly]) => {
+      if (!data.tasks.some(task => task.label === label)){
+        data.tasks.push({ id: uid('t'), label, type, points, schoolDaysOnly });
+      }
+    });
+    data.extraTasksMigrated_v3 = true;
+    changed = true;
+  }
+  // Migration ponctuelle v4 : rééquilibrage des points (les récompenses étaient atteintes
+  // trop vite) + fusion des missions "table" redondantes. Ne touche pas aux valeurs déjà
+  // personnalisées manuellement par le parent (seules les valeurs par défaut d'origine sont mises à jour).
+  if (!data.pointsRebalanced_v4){
+    const oldTaskPoints = {
+      'Ranger sa chambre': 5, 'Faire son lit': 3, 'Ranger ses affaires': 4,
+      'Mettre ou débarrasser la table': 4, 'Vider le lave-vaisselle': 3, 'Remplir le lave-vaisselle': 3,
+      'Sortir les poubelles': 3, 'Aider ses parents': 5, 'Aider à préparer le repas': 5,
+      'Nourrir l’animal': 3, 'Arroser les plantes': 2, 'Faire les devoirs': 8,
+      'Lire 15 minutes': 4, 'Lire 30 minutes': 8,
+    };
+    const newTaskPoints = {
+      'Ranger sa chambre': 4, 'Faire son lit': 2, 'Ranger ses affaires': 3,
+      'Mettre ou débarrasser la table': 2, 'Vider le lave-vaisselle': 2, 'Remplir le lave-vaisselle': 2,
+      'Sortir les poubelles': 1, 'Aider ses parents': 3, 'Aider à préparer le repas': 4,
+      'Nourrir l’animal': 1, 'Arroser les plantes': 1, 'Faire les devoirs': 6,
+      'Lire 15 minutes': 2, 'Lire 30 minutes': 4,
+    };
+    data.tasks.forEach(task => {
+      if (oldTaskPoints[task.label] !== undefined && task.points === oldTaskPoints[task.label]){
+        task.points = newTaskPoints[task.label];
+      }
+    });
+    // Supprime "Mettre la table" / "Débarrasser / vaisselle" si la version fusionnée existe déjà
+    if (data.tasks.some(t => t.label === 'Mettre ou débarrasser la table')){
+      data.tasks = data.tasks.filter(t => t.label !== 'Mettre la table' && t.label !== 'Débarrasser / vaisselle');
+    }
+    const oldRewardCosts = { 'Télévision / écran': 15, 'Nintendo Switch': 25, 'Cinéma': 50, 'Restaurant': 80 };
+    const newRewardCosts = { 'Télévision / écran': 15, 'Nintendo Switch': 30, 'Cinéma': 70, 'Restaurant': 120 };
+    data.rewards.forEach(reward => {
+      if (oldRewardCosts[reward.label] !== undefined && reward.cost === oldRewardCosts[reward.label]){
+        reward.cost = newRewardCosts[reward.label];
+      }
+    });
+    data.pointsRebalanced_v4 = true;
+    changed = true;
+  }
+  return changed;
+}
+
 function loadData(){
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -420,44 +507,7 @@ function loadData(){
     const parsed = JSON.parse(raw);
     // fusion douce avec les valeurs par défaut pour compat future
     const data = Object.assign(defaultData(), parsed);
-    if (!Array.isArray(data.redemptions)) data.redemptions = [];
-    if (!Array.isArray(data.pendingRequests)) data.pendingRequests = [];
-    if (!data.logicProgress || typeof data.logicProgress !== 'object') data.logicProgress = {};
-    // Migration ponctuelle (une seule fois) : ajoute les missions ménage introduites
-    // après la première version, sans les ré-ajouter si le parent les a supprimées ensuite.
-    if (!data.extraTasksMigrated_v2){
-      if (!data.tasks.some(task => task.label === 'Aider ses parents')){
-        data.tasks.push({ id: uid('t'), label: 'Aider ses parents', type: 'menage', points: 5, schoolDaysOnly: false });
-      }
-      const extraTasks = [
-        ['Faire son lit', 3],
-        ['Ranger ses affaires', 4],
-        ['Aider à préparer le repas', 5],
-        ['Nourrir l’animal', 3],
-        ['Arroser les plantes', 2],
-      ];
-      extraTasks.forEach(([label, points]) => {
-        if (!data.tasks.some(task => task.label === label)){
-          data.tasks.push({ id: uid('t'), label, type: 'menage', points, schoolDaysOnly: false });
-        }
-      });
-      data.extraTasksMigrated_v2 = true;
-    }
-    // Migration ponctuelle v3 : missions table/lave-vaisselle/lecture ajoutées ensuite.
-    if (!data.extraTasksMigrated_v3){
-      const extraTasksV3 = [
-        ['Mettre ou débarrasser la table', 'menage', 4, false],
-        ['Vider le lave-vaisselle', 'menage', 3, false],
-        ['Remplir le lave-vaisselle', 'menage', 3, false],
-        ['Lire 30 minutes', 'devoir', 8, false],
-      ];
-      extraTasksV3.forEach(([label, type, points, schoolDaysOnly]) => {
-        if (!data.tasks.some(task => task.label === label)){
-          data.tasks.push({ id: uid('t'), label, type, points, schoolDaysOnly });
-        }
-      });
-      data.extraTasksMigrated_v3 = true;
-    }
+    migrateData(data);
     return data;
   } catch (e) {
     console.error('Erreur de lecture des données', e);
