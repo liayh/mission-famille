@@ -1427,6 +1427,7 @@ function securitySettingsHtml(){
     `
     : `
     <button class="btn btn-ghost btn-block" id="btn-create-family" style="margin-bottom:10px;">☁️ Activer la synchronisation entre appareils</button>
+    <button class="btn btn-ghost btn-block" id="btn-join-family-settings" style="margin-bottom:10px;">🔗 Rejoindre une famille existante avec un code</button>
     `;
   return `
     <p class="help-text" style="margin-bottom:14px;">Le code parent protège les réglages et la validation des récompenses. Il est stocké de façon chiffrée (SHA-256) uniquement sur cet appareil.</p>
@@ -1533,6 +1534,15 @@ function bindSettingsContent(){
       createFamilyBtn.textContent = '☁️ Activer la synchronisation entre appareils';
       showToast('Impossible d\'activer la synchronisation, vérifiez votre connexion internet', '⚠️');
     }
+  };
+  const joinFamilySettingsBtn = document.getElementById('btn-join-family-settings');
+  if (joinFamilySettingsBtn) joinFamilySettingsBtn.onclick = () => {
+    if (state.children.length === 0){ closeModal(); openJoinFamilyModal(); return; }
+    openConfirmModal({
+      title: 'Rejoindre une famille existante', danger: true, confirmLabel: 'Continuer',
+      body: `Les données actuelles de <strong>cet appareil</strong> seront remplacées par celles de la famille rejointe. Pensez à les exporter avant si besoin.`,
+      onConfirm: () => openJoinFamilyModal()
+    });
   };
   const copyCodeBtn = document.getElementById('btn-copy-family-code');
   if (copyCodeBtn) copyCodeBtn.onclick = () => {
