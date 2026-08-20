@@ -1152,6 +1152,12 @@ function renderHistory(){
             <span>↩️ <strong>${escapeHtml(c ? c.name : '?')}</strong> : demande refusée pour « ${escapeHtml(r.rewardLabel)} » (points conservés)</span>
           </div>`;
         }
+        if (r.kind === 'penalty'){
+          return `<div class="history-item history-penalty">
+            <span class="h-date">${dateLabel}</span>
+            <span>➖ <strong>${escapeHtml(c ? c.name : '?')}</strong> : -${escapeHtml(r.pointsRemoved)} pts${r.reason ? ` (${escapeHtml(r.reason)})` : ''}</span>
+          </div>`;
+        }
         const rewardValue = r.kind === 'monthly' ? `${escapeHtml(r.amount)} €` : `-${escapeHtml(r.pointsSpent)} pts`;
         return `<div class="history-item">
           <span class="h-date">${dateLabel}</span>
@@ -1327,6 +1333,45 @@ function openSetupWizard(){
   openChildForm({ afterSave: null, isFirstRun: true });
 }
 
+/* Retire manuellement des points à un enfant (dispute, comportement...), avec une raison
+   optionnelle conservée dans le journal des récompenses pour rester transparent. */
+function openDeductPointsModal(childId){
+  const child = getChild(childId);
+  if (!child) return;
+  openModal(`
+    <h3 class="modal-title">➖ Retirer des points</h3>
+    <p class="modal-sub">Pour <strong>${escapeHtml(child.name)}</strong> (★ ${escapeHtml(getPoints(child.id))} pts actuellement).</p>
+    <div class="field">
+      <label for="deduct-amount">Nombre de points à retirer</label>
+      <input type="number" id="deduct-amount" min="1" max="1000" value="5">
+    </div>
+    <div class="field">
+      <label for="deduct-reason">Raison (optionnel, visible dans le journal)</label>
+      <input type="text" id="deduct-reason" maxlength="60" placeholder="Ex : Dispute avec son frère">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btn-cancel">Annuler</button>
+      <button class="btn btn-danger" id="btn-confirm-deduct">Retirer les points</button>
+    </div>
+  `);
+  document.getElementById('btn-cancel').onclick = closeModal;
+  document.getElementById('btn-confirm-deduct').onclick = () => {
+    const amount = Math.max(1, parseInt(document.getElementById('deduct-amount').value, 10) || 1);
+    const reason = document.getElementById('deduct-reason').value.trim();
+    withUndo(() => {
+      addPoints(child.id, -amount);
+      state.redemptions.unshift({
+        id: uid('pen'), kind: 'penalty', childId: child.id,
+        reason: reason || null, date: new Date().toISOString(), pointsRemoved: amount,
+      });
+      saveData();
+    }, `${amount} pt${amount > 1 ? 's' : ''} retiré${amount > 1 ? 's' : ''} à ${child.name}`, '➖');
+    closeModal();
+    renderSettingsModal();
+    render();
+  };
+}
+
 /* ---------------------------- formulaire : enfant ---------------------------- */
 
 function openChildForm(existing){
@@ -1426,6 +1471,7 @@ function childrenSettingsHtml(){
       <div class="grow"><div class="rname">${escapeHtml(c.name)}</div><div class="rmeta">★ ${escapeHtml(getPoints(c.id))} pts</div></div>
       <div class="row-actions">
         <button class="icon-mini" data-edit-child="${c.id}" title="Modifier">✏️</button>
+        <button class="icon-mini" data-deduct-points="${c.id}" title="Retirer des points (dispute, comportement...)">➖</button>
         <button class="icon-mini" data-reset-points="${c.id}" title="Réinitialiser les points">↺</button>
         <button class="icon-mini" data-del-child="${c.id}" title="Supprimer">🗑️</button>
       </div>
@@ -1530,6 +1576,9 @@ function bindSettingsContent(){
   if (newChildBtn) newChildBtn.onclick = () => openChildForm();
   document.querySelectorAll('[data-edit-child]').forEach(el => {
     el.onclick = () => openChildForm(getChild(el.dataset.editChild));
+  });
+  document.querySelectorAll('[data-deduct-points]').forEach(el => {
+    el.onclick = () => openDeductPointsModal(el.dataset.deductPoints);
   });
   document.querySelectorAll('[data-reset-points]').forEach(el => {
     el.onclick = () => openConfirmModal({
