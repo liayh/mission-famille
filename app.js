@@ -403,6 +403,8 @@ function defaultData(){
       { id: uid('r'), label: 'Cinéma', icon: '🎬', cost: 50 },
       { id: uid('r'), label: 'Restaurant', icon: '🍽️', cost: 80 },
     ],
+    monthlyRewardEnabled: true,  // récompense en argent pour un mois de missions complet
+    monthlyRewardAmount: 20,     // montant en euros de cette récompense
     points: {},          // { childId: totalPointsDisponibles }
     completions: {},      // { 'YYYY-MM-DD': { childId: [taskId, ...] } }
     redemptions: [],      // { id, childId, rewardId, rewardLabel, date, pointsSpent }
@@ -907,21 +909,25 @@ function renderBoard(){
           </div>
         </div>`;
       }).join('');
-  const monthlyStats = monthlyTaskStats(child.id);
-  const previousMonth = new Date();
-  previousMonth.setDate(1);
-  previousMonth.setMonth(previousMonth.getMonth() - 1);
-  const previousMonthKey = monthKey(previousMonth);
-  const previousStats = monthlyTaskStats(child.id, previousMonthKey);
-  const monthlyReward = previousStats.complete && !hasMonthlyRedemption(child.id, previousMonthKey)
-    ? `<div class="monthly-reward unlocked">
-        <div class="monthly-reward-top"><span class="monthly-reward-icon">💶</span><div><strong>Récompense de ${escapeHtml(monthLabel(previousMonthKey))}</strong><span>20 € pour toutes les missions réalisées</span></div></div>
-        <button class="btn btn-sm btn-gold" data-monthly-redeem="${previousMonthKey}">Valider</button>
-      </div>`
-    : `<div class="monthly-reward">
-        <div class="monthly-reward-top"><span class="monthly-reward-icon">💶</span><div><strong>Récompense mensuelle</strong><span>${monthlyStats.completed} / ${monthlyStats.required} missions réalisées ce mois-ci</span></div></div>
-        <span class="monthly-reward-status">20 € en fin de mois</span>
-      </div>`;
+  let monthlyReward = '';
+  if (state.monthlyRewardEnabled){
+    const amount = state.monthlyRewardAmount;
+    const monthlyStats = monthlyTaskStats(child.id);
+    const previousMonth = new Date();
+    previousMonth.setDate(1);
+    previousMonth.setMonth(previousMonth.getMonth() - 1);
+    const previousMonthKey = monthKey(previousMonth);
+    const previousStats = monthlyTaskStats(child.id, previousMonthKey);
+    monthlyReward = previousStats.complete && !hasMonthlyRedemption(child.id, previousMonthKey)
+      ? `<div class="monthly-reward unlocked">
+          <div class="monthly-reward-top"><span class="monthly-reward-icon">💶</span><div><strong>Récompense de ${escapeHtml(monthLabel(previousMonthKey))}</strong><span>${escapeHtml(amount)} € pour toutes les missions réalisées</span></div></div>
+          <button class="btn btn-sm btn-gold" data-monthly-redeem="${previousMonthKey}">Valider</button>
+        </div>`
+      : `<div class="monthly-reward">
+          <div class="monthly-reward-top"><span class="monthly-reward-icon">💶</span><div><strong>Récompense mensuelle</strong><span>${monthlyStats.completed} / ${monthlyStats.required} missions réalisées ce mois-ci</span></div></div>
+          <span class="monthly-reward-status">${escapeHtml(amount)} € en fin de mois</span>
+        </div>`;
+  }
 
   return `
   <div class="board">
@@ -1029,19 +1035,20 @@ function rejectRequest(requestId){
 
 function confirmMonthlyRedeem(month){
   const child = getChild(activeChildId);
-  if (!child || hasMonthlyRedemption(child.id, month)) return;
+  if (!child || !state.monthlyRewardEnabled || hasMonthlyRedemption(child.id, month)) return;
+  const amount = state.monthlyRewardAmount;
   openConfirmModal({
     title: 'Confirmer la récompense mensuelle',
-    body: `Valider <strong>20 €</strong> pour <strong>${escapeHtml(child.name)}</strong> : toutes les missions de ${escapeHtml(monthLabel(month))} ont été réalisées ?`,
-    confirmLabel: 'Valider les 20 €',
+    body: `Valider <strong>${escapeHtml(amount)} €</strong> pour <strong>${escapeHtml(child.name)}</strong> : toutes les missions de ${escapeHtml(monthLabel(month))} ont été réalisées ?`,
+    confirmLabel: `Valider les ${amount} €`,
     onConfirm: () => {
       withUndo(() => {
         state.redemptions.unshift({
           id: uid('red'), kind: 'monthly', childId: child.id, month,
-          rewardLabel: 'Récompense mensuelle', rewardIcon: '💶', date: new Date().toISOString(), amount: 20,
+          rewardLabel: 'Récompense mensuelle', rewardIcon: '💶', date: new Date().toISOString(), amount,
         });
         saveData();
-      }, `Récompense de 20 € validée pour ${child.name}`, '💶');
+      }, `Récompense de ${amount} € validée pour ${child.name}`, '💶');
       render();
     }
   });
@@ -1095,7 +1102,7 @@ function renderHistory(){
             <span>↩️ <strong>${escapeHtml(c ? c.name : '?')}</strong> : demande refusée pour « ${escapeHtml(r.rewardLabel)} » (points conservés)</span>
           </div>`;
         }
-        const rewardValue = r.kind === 'monthly' ? '20 €' : `-${escapeHtml(r.pointsSpent)} pts`;
+        const rewardValue = r.kind === 'monthly' ? `${escapeHtml(r.amount)} €` : `-${escapeHtml(r.pointsSpent)} pts`;
         return `<div class="history-item">
           <span class="h-date">${dateLabel}</span>
           <span>${escapeHtml(r.rewardIcon)} <strong>${escapeHtml(c ? c.name : '?')}</strong> ${r.kind === 'monthly' ? 'a gagné' : 'a utilisé'} « ${escapeHtml(r.rewardLabel)} » (${rewardValue})</span>
@@ -1401,7 +1408,20 @@ function rewardsSettingsHtml(){
         <button class="icon-mini" data-del-reward="${r.id}" title="Supprimer">🗑️</button>
       </div>
     </div>`).join('') || '<p class="help-text">Aucune récompense configurée.</p>';
-  return `${rows}<button class="btn btn-primary btn-block" id="btn-new-reward" style="margin-top:10px;">＋ Ajouter une récompense</button>`;
+  return `
+    <div class="list-row" style="flex-direction:column; align-items:stretch; gap:8px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="font-size:22px;">💶</span>
+        <div class="grow"><div class="rname">Récompense mensuelle en argent</div><div class="rmeta">Versée quand toutes les missions du mois sont faites</div></div>
+        <button class="btn btn-sm ${state.monthlyRewardEnabled ? 'btn-gold' : 'btn-ghost'}" id="btn-toggle-monthly-reward">${state.monthlyRewardEnabled ? 'Activée' : 'Désactivée'}</button>
+      </div>
+      ${state.monthlyRewardEnabled ? `
+      <div class="field" style="margin:0;">
+        <label for="monthly-reward-amount">Montant (€)</label>
+        <input type="number" id="monthly-reward-amount" min="1" max="1000" value="${escapeHtml(state.monthlyRewardAmount)}">
+      </div>` : ''}
+    </div>
+    ${rows}<button class="btn btn-primary btn-block" id="btn-new-reward" style="margin-top:10px;">＋ Ajouter une récompense</button>`;
 }
 
 function appearanceSettingsHtml(){
@@ -1505,6 +1525,20 @@ function bindSettingsContent(){
   });
 
   // Récompenses
+  const toggleMonthlyBtn = document.getElementById('btn-toggle-monthly-reward');
+  if (toggleMonthlyBtn) toggleMonthlyBtn.onclick = () => {
+    state.monthlyRewardEnabled = !state.monthlyRewardEnabled;
+    saveData();
+    renderSettingsModal();
+    render();
+  };
+  const monthlyAmountInput = document.getElementById('monthly-reward-amount');
+  if (monthlyAmountInput) monthlyAmountInput.onchange = () => {
+    const amount = Math.max(1, parseInt(monthlyAmountInput.value, 10) || 1);
+    state.monthlyRewardAmount = amount;
+    saveData();
+    render();
+  };
   const newRewardBtn = document.getElementById('btn-new-reward');
   if (newRewardBtn) newRewardBtn.onclick = () => openRewardForm();
   document.querySelectorAll('[data-edit-reward]').forEach(el => {
