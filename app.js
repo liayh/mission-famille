@@ -24,6 +24,8 @@ const THEMES = {
   royaume: { label: 'Royaume', icon: '🏰' },
 };
 
+const LOGIC_CHALLENGE_POINTS = 1; // pts gagnés par bonne réponse à un défi de logique
+
 const LOGIC_GAMES = [
   {
     id: 'series', title: 'Les suites malignes', icon: '🔢', description: 'Trouve le nombre qui vient ensuite.',
@@ -903,7 +905,7 @@ function renderLogicGames(){
   <section class="logic-panel logic-teaser" aria-labelledby="logic-title">
     <div>
       <h2 id="logic-title">🗺️ Défis du Royaume</h2>
-      <p>${totalToday} / 50 défis réussis aujourd'hui · ${logicTotalSolved(child.id)} au total · Calcul mental &amp; logique</p>
+      <p>${totalToday} / 50 défis réussis aujourd'hui · ${logicTotalSolved(child.id)} au total · +${LOGIC_CHALLENGE_POINTS} pt par bonne réponse</p>
     </div>
     <button class="btn btn-gold" id="btn-open-logic-menu">Jouer</button>
   </section>`;
@@ -1004,10 +1006,11 @@ function openLogicQuestion(gameId, questionIndex){
           state.logicProgress[child.id][game.id][day].push(questionIndex);
           if (!state.logicTotalSolved) state.logicTotalSolved = {};
           state.logicTotalSolved[child.id] = (state.logicTotalSolved[child.id] || 0) + 1;
+          addPoints(child.id, LOGIC_CHALLENGE_POINTS);
         }
         saveData();
         launchConfetti();
-        showToast('Bravo !', '🎉');
+        showToast(`Bravo ! +${LOGIC_CHALLENGE_POINTS} pt`, '🎉');
         render();
         renderLogicNodeMap(gameId);
       };
