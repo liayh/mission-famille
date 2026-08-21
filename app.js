@@ -844,13 +844,17 @@ function pickWeightedPrize(prizes){
   return prizes[0];
 }
 
+// Chaque étape doit rester visuellement la même créature en train de grandir (pas un
+// animal générique sans rapport, ex. un poussin qui "deviendrait" un dragon) : quand il
+// n'existe pas d'emoji "bébé X" cohérent, on garde l'animal final dès l'éclosion et on
+// réserve l'étape ultime (25 fois nourri) à une version "✨" plus majestueuse.
 const PET_SPECIES = {
-  dragon: { label: 'Dragon', stages: ['🥚', '🐣', '🐲', '🐉'] },
-  licorne: { label: 'Licorne', stages: ['🥚', '🐴', '🦄', '🦄'] },
-  renard: { label: 'Renard', stages: ['🥚', '🐾', '🦊', '🦊'] },
-  papillon: { label: 'Papillon', stages: ['🥚', '🐛', '🦋', '🦋'] },
-  chat: { label: 'Chat', stages: ['🥚', '🐱', '🐈', '🐈'] },
-  hibou: { label: 'Hibou', stages: ['🥚', '🐣', '🦉', '🦉'] },
+  dragon: { label: 'Dragon', stages: ['🥚', '🦎', '🐲', '🐉'] },
+  licorne: { label: 'Licorne', stages: ['🥚', '🦄', '🦄', '🦄✨'] },
+  renard: { label: 'Renard', stages: ['🥚', '🦊', '🦊', '🦊✨'] },
+  papillon: { label: 'Papillon', stages: ['🥚', '🐛', '🦋', '🦋✨'] },
+  chat: { label: 'Chat', stages: ['🥚', '🐱', '🐈', '🐈✨'] },
+  hibou: { label: 'Hibou', stages: ['🥚', '🦉', '🦉', '🦉✨'] },
 };
 const PET_FEED_COST = 2;
 const PET_STAGE_THRESHOLDS = [0, 1, 10, 25]; // nombre de fois nourri pour atteindre chaque stade
@@ -1575,8 +1579,13 @@ function renderCompagnonTab(){
   const stage = petStageIndex(pet.totalFeeds);
   const hunger = petHunger(pet, child.id);
   const happiness = petHappiness(pet, child.id);
-  const canFeed = getPoints(child.id) >= PET_FEED_COST;
+  const hungerFull = hunger >= 100;
+  const canFeed = !hungerFull && getPoints(child.id) >= PET_FEED_COST;
   const onCooldown = petPatOnCooldown(pet);
+  const hints = [
+    hungerFull ? "Il n'a plus faim, inutile de dépenser des points pour l'instant." : '',
+    onCooldown ? 'Attends un peu avant de le caresser à nouveau.' : '',
+  ].filter(Boolean);
   return `
   <section class="logic-panel pet-page">
     <p class="pet-page-sub">${escapeHtml(species.label)} de ${escapeHtml(child.name)}</p>
@@ -1596,7 +1605,7 @@ function renderCompagnonTab(){
       <button class="btn btn-gold" id="btn-feed-pet" ${canFeed ? '' : 'disabled'}>Nourrir (-${PET_FEED_COST} pts)</button>
       <button class="btn btn-ghost" id="btn-pat-pet" ${onCooldown ? 'disabled' : ''}>Caresser 💛</button>
     </div>
-    ${onCooldown ? `<p class="help-text" style="text-align:center; margin-top:10px;">Attends un peu avant de le caresser à nouveau.</p>` : ''}
+    ${hints.map(h => `<p class="help-text" style="text-align:center; margin-top:6px;">${escapeHtml(h)}</p>`).join('')}
   </section>`;
 }
 
@@ -1616,7 +1625,7 @@ function bindCompagnonTab(){
   if (feedBtn) feedBtn.onclick = () => {
     const child = getChild(activeChildId);
     const pet = state.pets[child.id];
-    if (!pet || getPoints(child.id) < PET_FEED_COST) return;
+    if (!pet || getPoints(child.id) < PET_FEED_COST || petHunger(pet, child.id) >= 100) return;
     const prevStage = petStageIndex(pet.totalFeeds);
     addPoints(child.id, -PET_FEED_COST);
     pet.totalFeeds++;
