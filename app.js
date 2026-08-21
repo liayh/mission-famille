@@ -489,6 +489,11 @@ function migrateData(data){
   if (!data.logicProgress || typeof data.logicProgress !== 'object') data.logicProgress = {};
   if (!data.wheelSpins || typeof data.wheelSpins !== 'object') data.wheelSpins = {};
   if (!data.pets || typeof data.pets !== 'object') data.pets = {};
+  Object.values(data.pets).forEach(pet => {
+    if (typeof pet.happiness !== 'number') pet.happiness = 100;
+    if (!pet.lastHappinessCheckAt) pet.lastHappinessCheckAt = Date.now();
+    if (pet.lastPettedAt === undefined) pet.lastPettedAt = null;
+  });
   if (typeof data.teamGoalEnabled !== 'boolean') data.teamGoalEnabled = false;
   if (typeof data.teamGoalThreshold !== 'number' || data.teamGoalThreshold <= 0) data.teamGoalThreshold = 60;
   if (typeof data.teamGoalLabel !== 'string' || !data.teamGoalLabel) data.teamGoalLabel = 'Une sortie en famille';
@@ -818,6 +823,9 @@ const PET_SPECIES = {
 const PET_FEED_COST = 2;
 const PET_STAGE_THRESHOLDS = [0, 1, 10, 25]; // nombre de fois nourri pour atteindre chaque stade
 const PET_HUNGER_DECAY_HOURS = 48; // temps pour retomber de 100 à 0 sans être nourri
+const PET_HAPPINESS_DECAY_HOURS = 72; // temps pour retomber de 100 à 0 sans être caressé
+const PET_PAT_COOLDOWN_MS = 60 * 1000; // délai minimum entre deux caresses
+const PET_PAT_GAIN = 20; // bonheur gagné par caresse
 
 function petStageIndex(totalFeeds){
   let idx = 0;
@@ -831,10 +839,38 @@ function petHunger(pet){
   return Math.max(0, Math.min(100, Math.round(100 - hoursSince * (100 / PET_HUNGER_DECAY_HOURS))));
 }
 
-function petMoodLabel(hunger){
-  if (hunger >= 70) return 'est en pleine forme !';
-  if (hunger >= 30) return 'a un peu faim.';
-  return 'a très faim, nourris-le vite !';
+/* Le bonheur est stocké comme une valeur (pas seulement un horodatage comme la faim) car
+   une caresse doit AJOUTER à la valeur déjà décayée, pas la remplacer par un plein — la
+   lecture applique la décroissance depuis le dernier "checkpoint" sans le modifier. */
+function petHappiness(pet){
+  if (typeof pet.happiness !== 'number') return 100;
+  if (!pet.lastHappinessCheckAt) return pet.happiness;
+  const hoursSince = (Date.now() - pet.lastHappinessCheckAt) / 3600000;
+  return Math.max(0, Math.min(100, Math.round(pet.happiness - hoursSince * (100 / PET_HAPPINESS_DECAY_HOURS))));
+}
+
+/* Fige la valeur de bonheur décayée dans pet.happiness avant de la modifier (ex. caresse),
+   pour ne pas perdre la décroissance déjà écoulée. */
+function checkpointHappiness(pet){
+  pet.happiness = petHappiness(pet);
+  pet.lastHappinessCheckAt = Date.now();
+}
+
+function petPatOnCooldown(pet){
+  return !!(pet.lastPettedAt && (Date.now() - pet.lastPettedAt) < PET_PAT_COOLDOWN_MS);
+}
+
+function petNeedsAttention(childId){
+  const pet = state.pets[childId];
+  if (!pet) return false;
+  return petHunger(pet) < 30 || petHappiness(pet) < 30;
+}
+
+function petMoodLabel(hunger, happiness){
+  if (hunger < 30) return 'a très faim, nourris-le vite !';
+  if (happiness < 30) return 'se sent un peu seul, caresse-le !';
+  if (hunger >= 70 && happiness >= 70) return 'est aux anges !';
+  return 'va bien.';
 }
 
 /* Somme des points gagnés cette semaine par tous les enfants, pour l'objectif d'équipe. */
@@ -918,7 +954,8 @@ function render(){
       ${renderBadges()}
       ${renderWheel()}
       ${renderLootChest()}
-      ${renderPet()}
+    ` : mainTab === 'compagnon' ? `
+      ${renderCompagnonTab()}
     ` : mainTab === 'historique' ? `
       ${renderCalendar()}
       ${renderHistory()}
@@ -944,7 +981,8 @@ function render(){
     bindBadges();
     bindWheel();
     bindLootChest();
-    bindPet();
+  } else if (mainTab === 'compagnon'){
+    bindCompagnonTab();
   } else if (mainTab === 'historique'){
     bindCalendar();
   } else {
@@ -957,13 +995,18 @@ function renderBottomNav(){
   const tabs = [
     { id: 'accueil', icon: '🏠', label: 'Accueil' },
     { id: 'jeux', icon: '🎮', label: 'Jeux' },
+    { id: 'compagnon', icon: '🐾', label: 'Compagnon' },
     { id: 'historique', icon: '📅', label: 'Historique' },
   ];
+  const needsAttention = petNeedsAttention(activeChildId);
   return `
   <nav class="bottom-nav">
     ${tabs.map(t => `
       <button class="bottom-nav-btn ${mainTab === t.id ? 'active' : ''}" data-main-tab="${t.id}">
-        <span class="bottom-nav-icon">${t.icon}</span>
+        <span class="bottom-nav-icon-wrap">
+          <span class="bottom-nav-icon">${t.icon}</span>
+          ${t.id === 'compagnon' && needsAttention ? '<span class="bottom-nav-dot"></span>' : ''}
+        </span>
         <span class="bottom-nav-label">${t.label}</span>
       </button>`).join('')}
   </nav>`;
@@ -1410,41 +1453,59 @@ function renderTeamGoal(){
   </section>`;
 }
 
-function renderPet(){
+function renderCompagnonTab(){
   const child = getChild(activeChildId);
   const pet = state.pets[child.id];
   if (!pet){
     return `
-    <section class="logic-panel logic-teaser" aria-labelledby="pet-title">
-      <div>
-        <h2 id="pet-title">🐾 Choisis ton compagnon</h2>
-        <p>Adopte-le et prends-en soin en le nourrissant avec tes points !</p>
-      </div>
-      <div class="pet-species-picker">
-        ${Object.entries(PET_SPECIES).map(([id, sp]) => `<button class="pet-species-btn" data-pick-pet="${id}">${sp.stages[0]} ${escapeHtml(sp.label)}</button>`).join('')}
+    <section class="logic-panel pet-page pet-page-empty">
+      <h2>🐾 Choisis le compagnon de ${escapeHtml(child.name)}</h2>
+      <p class="help-text">Adopte-le et prends-en soin en le nourrissant et en le caressant !</p>
+      <div class="pet-species-picker pet-species-picker-big">
+        ${Object.entries(PET_SPECIES).map(([id, sp]) => `
+          <button class="pet-species-btn pet-species-btn-big" data-pick-pet="${id}">
+            <span class="pet-species-emoji">${sp.stages[0]}</span><span>${escapeHtml(sp.label)}</span>
+          </button>`).join('')}
       </div>
     </section>`;
   }
   const species = PET_SPECIES[pet.species];
   const stage = petStageIndex(pet.totalFeeds);
   const hunger = petHunger(pet);
+  const happiness = petHappiness(pet);
   const canFeed = getPoints(child.id) >= PET_FEED_COST;
+  const onCooldown = petPatOnCooldown(pet);
   return `
-  <section class="logic-panel logic-teaser" aria-labelledby="pet-title">
-    <div>
-      <h2 id="pet-title">${species.stages[stage]} ${escapeHtml(species.label)} de ${escapeHtml(child.name)}</h2>
-      <p>Il ${escapeHtml(petMoodLabel(hunger))}</p>
-      <div class="pet-hunger-track"><div class="pet-hunger-fill" style="width:${hunger}%;"></div></div>
+  <section class="logic-panel pet-page">
+    <p class="pet-page-sub">${escapeHtml(species.label)} de ${escapeHtml(child.name)}</p>
+    <div class="pet-big-emoji">${species.stages[stage]}</div>
+    <p class="pet-mood">Il ${escapeHtml(petMoodLabel(hunger, happiness))}</p>
+    <div class="pet-gauges">
+      <div class="pet-gauge-row">
+        <span class="pet-gauge-label">🍖 Faim</span>
+        <div class="pet-hunger-track"><div class="pet-hunger-fill" style="width:${hunger}%;"></div></div>
+      </div>
+      <div class="pet-gauge-row">
+        <span class="pet-gauge-label">💛 Bonheur</span>
+        <div class="pet-happiness-track"><div class="pet-happiness-fill" style="width:${happiness}%;"></div></div>
+      </div>
     </div>
-    <button class="btn btn-gold" id="btn-feed-pet" ${canFeed ? '' : 'disabled'}>Nourrir (-${PET_FEED_COST} pts)</button>
+    <div class="pet-actions">
+      <button class="btn btn-gold" id="btn-feed-pet" ${canFeed ? '' : 'disabled'}>Nourrir (-${PET_FEED_COST} pts)</button>
+      <button class="btn btn-ghost" id="btn-pat-pet" ${onCooldown ? 'disabled' : ''}>Caresser 💛</button>
+    </div>
+    ${onCooldown ? `<p class="help-text" style="text-align:center; margin-top:10px;">Attends un peu avant de le caresser à nouveau.</p>` : ''}
   </section>`;
 }
 
-function bindPet(){
+function bindCompagnonTab(){
   document.querySelectorAll('[data-pick-pet]').forEach(el => {
     el.onclick = () => {
       const child = getChild(activeChildId);
-      state.pets[child.id] = { species: el.dataset.pickPet, totalFeeds: 0, lastFedAt: null };
+      state.pets[child.id] = {
+        species: el.dataset.pickPet, totalFeeds: 0, lastFedAt: null,
+        happiness: 100, lastHappinessCheckAt: Date.now(), lastPettedAt: null,
+      };
       saveData();
       render();
     };
@@ -1466,6 +1527,18 @@ function bindPet(){
     } else {
       showToast('Compagnon nourri !', '🍖');
     }
+    render();
+  };
+  const patBtn = document.getElementById('btn-pat-pet');
+  if (patBtn) patBtn.onclick = () => {
+    const child = getChild(activeChildId);
+    const pet = state.pets[child.id];
+    if (!pet || petPatOnCooldown(pet)) return;
+    checkpointHappiness(pet);
+    pet.happiness = Math.min(100, pet.happiness + PET_PAT_GAIN);
+    pet.lastPettedAt = Date.now();
+    saveData();
+    showToast('Il adore ça !', '💛');
     render();
   };
 }
