@@ -115,6 +115,7 @@ const LOGIC_GAMES = [
 
 let state = null;          // data loaded from localStorage
 let activeChildId = null;  // currently selected child tab
+let mainTab = 'accueil';   // onglet principal affiché : accueil / jeux / historique
 let failedPinAttempts = 0;
 let pinLockUntil = 0;
 let calendarMonth = monthKey();
@@ -912,32 +913,66 @@ function render(){
     activeChildId = state.children[0].id;
   }
 
+  const tabContent = mainTab === 'jeux' ? `
+      ${renderLogicGames()}
+      ${renderBadges()}
+      ${renderWheel()}
+      ${renderLootChest()}
+      ${renderPet()}
+    ` : mainTab === 'historique' ? `
+      ${renderCalendar()}
+      ${renderHistory()}
+    ` : `
+      ${renderBackupReminder()}
+      ${renderTeamGoal()}
+      ${renderSiblingChallenge()}
+      ${renderBoard()}
+    `;
+
   app.innerHTML = `
     ${renderTopbar()}
-    ${renderBackupReminder()}
     ${renderChildRow()}
-    ${renderTeamGoal()}
-    ${renderSiblingChallenge()}
-    ${renderLogicGames()}
-    ${renderBadges()}
-    ${renderWheel()}
-    ${renderLootChest()}
-    ${renderPet()}
-    ${renderBoard()}
-    ${renderCalendar()}
-    ${renderHistory()}
+    ${tabContent}
     <p class="footer-note">Données stockées uniquement sur cet appareil · Mission Famille</p>
+    ${renderBottomNav()}
   `;
   bindTopbar();
-  bindBackupReminder();
   bindChildRow();
-  bindCalendar();
-  bindLogicGames();
-  bindBadges();
-  bindWheel();
-  bindLootChest();
-  bindPet();
-  bindBoard();
+  bindBottomNav();
+  if (mainTab === 'jeux'){
+    bindLogicGames();
+    bindBadges();
+    bindWheel();
+    bindLootChest();
+    bindPet();
+  } else if (mainTab === 'historique'){
+    bindCalendar();
+  } else {
+    bindBackupReminder();
+    bindBoard();
+  }
+}
+
+function renderBottomNav(){
+  const tabs = [
+    { id: 'accueil', icon: '🏠', label: 'Accueil' },
+    { id: 'jeux', icon: '🎮', label: 'Jeux' },
+    { id: 'historique', icon: '📅', label: 'Historique' },
+  ];
+  return `
+  <nav class="bottom-nav">
+    ${tabs.map(t => `
+      <button class="bottom-nav-btn ${mainTab === t.id ? 'active' : ''}" data-main-tab="${t.id}">
+        <span class="bottom-nav-icon">${t.icon}</span>
+        <span class="bottom-nav-label">${t.label}</span>
+      </button>`).join('')}
+  </nav>`;
+}
+
+function bindBottomNav(){
+  document.querySelectorAll('[data-main-tab]').forEach(el => {
+    el.onclick = () => { mainTab = el.dataset.mainTab; render(); };
+  });
 }
 
 function renderTopbar(){
