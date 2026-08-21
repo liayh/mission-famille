@@ -576,6 +576,8 @@ body[data-theme]:not([data-theme="royaume"]) .footer-note{color:var(--theme-mute
 .emoji-picker{display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;}
 .emoji-opt{width:42px; height:42px; border-radius:10px; border:2px solid var(--paper-dim); background:#fff; font-size:20px; cursor:pointer;}
 .emoji-opt.selected{border-color:var(--gold); background:#fff8e6;}
+.emoji-opt.locked{display:flex; align-items:center; justify-content:center; font-size:16px; opacity:.5; cursor:not-allowed; background:var(--paper-dim);}
+.locked-avatars{margin-top:6px;}
 
 .settings-tabs{display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;}
 .settings-tab{padding:8px 14px; border-radius:20px; border:2px solid var(--paper-dim); background:#fff; font-size:13px; font-weight:700; cursor:pointer;}
