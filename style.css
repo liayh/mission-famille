@@ -43,7 +43,10 @@ body{
   min-height:100%;
 }
 
-button{font-family:inherit;}
+/* touch-action:manipulation supprime le délai de ~300ms avant qu'un tap ne déclenche le
+   clic sur mobile (le navigateur attend sinon un éventuel double-tap pour zoomer), ce qui
+   rendait les boutons (sudoku, palette 2048...) peu réactifs voire ratés au toucher. */
+button{font-family:inherit; touch-action:manipulation;}
 h1,h2,h3{font-family:var(--font-display); margin:0; letter-spacing:.2px;}
 
 ::selection{background:var(--gold); color:var(--ink-900);}
@@ -417,7 +420,7 @@ body[data-theme]:not([data-theme="royaume"]) .footer-note{color:var(--theme-mute
 .sudoku-erase{background:#ffe0e0; color:var(--coral);}
 
 /* ---------- 2048 ---------- */
-.g2048-grid{display:grid; grid-template-columns:repeat(4, 1fr); gap:7px; max-width:320px; margin:0 auto; background:var(--paper-dim); padding:7px; border-radius:10px;}
+.g2048-grid{display:grid; grid-template-columns:repeat(4, 1fr); gap:7px; max-width:320px; margin:0 auto; background:var(--paper-dim); padding:7px; border-radius:10px; touch-action:none;}
 .g2048-cell{aspect-ratio:1; display:flex; align-items:center; justify-content:center; background:#e9dfc4; border-radius:7px; font-weight:800; font-size:19px; color:var(--ink-900); user-select:none;}
 .g2048-v2{background:#f6efdc;} .g2048-v4{background:#f2e3b8;}
 .g2048-v8{background:#f2b84b; color:#fff;} .g2048-v16{background:#ef9f3f; color:#fff;}
