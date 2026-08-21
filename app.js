@@ -461,6 +461,135 @@ function sudokuIsComplete(grid){
   return true;
 }
 
+/* ---------------------------- 2048 ---------------------------- */
+
+// Pas de "défi du jour" ici : contrairement aux autres jeux, 2048 se joue librement, sans
+// limite quotidienne. Les points sont attribués une seule fois par palier de tuile atteint.
+const GAME2048_MILESTONES = [
+  { value: 128, points: 3 },
+  { value: 256, points: 5 },
+  { value: 512, points: 8 },
+  { value: 1024, points: 12 },
+  { value: 2048, points: 20 },
+];
+
+function empty2048Grid(){
+  return Array.from({ length: 4 }, () => Array(4).fill(0));
+}
+
+function spawn2048Tile(grid){
+  const empties = [];
+  for (let r = 0; r < 4; r++){
+    for (let c = 0; c < 4; c++){
+      if (grid[r][c] === 0) empties.push([r, c]);
+    }
+  }
+  if (!empties.length) return grid;
+  const [r, c] = empties[Math.floor(Math.random() * empties.length)];
+  grid[r][c] = Math.random() < 0.9 ? 2 : 4;
+  return grid;
+}
+
+function new2048Grid(){
+  const grid = empty2048Grid();
+  spawn2048Tile(grid);
+  spawn2048Tile(grid);
+  return grid;
+}
+
+/* Compacte et fusionne une ligne vers l'index 0 (gauche/haut) — les 4 directions
+   réutilisent cette même fonction en inversant la ligne au besoin avant/après. */
+function compactAndMergeLine(line){
+  const nums = line.filter(v => v !== 0);
+  const merged = [];
+  let scoreGained = 0;
+  let i = 0;
+  while (i < nums.length){
+    if (i < nums.length - 1 && nums[i] === nums[i + 1]){
+      const val = nums[i] * 2;
+      merged.push(val);
+      scoreGained += val;
+      i += 2;
+    } else {
+      merged.push(nums[i]);
+      i += 1;
+    }
+  }
+  while (merged.length < line.length) merged.push(0);
+  return { line: merged, scoreGained };
+}
+
+function move2048(grid, direction){
+  const size = grid.length;
+  const newGrid = Array.from({ length: size }, () => Array(size).fill(0));
+  let scoreGained = 0, moved = false;
+  if (direction === 'left' || direction === 'right'){
+    for (let r = 0; r < size; r++){
+      let line = grid[r].slice();
+      if (direction === 'right') line = line.reverse();
+      const { line: merged, scoreGained: gained } = compactAndMergeLine(line);
+      scoreGained += gained;
+      const finalLine = direction === 'right' ? merged.slice().reverse() : merged;
+      newGrid[r] = finalLine;
+      if (finalLine.some((v, i) => v !== grid[r][i])) moved = true;
+    }
+  } else {
+    for (let c = 0; c < size; c++){
+      let line = grid.map(row => row[c]);
+      if (direction === 'down') line = line.reverse();
+      const { line: merged, scoreGained: gained } = compactAndMergeLine(line);
+      scoreGained += gained;
+      const finalLine = direction === 'down' ? merged.slice().reverse() : merged;
+      for (let r = 0; r < size; r++){
+        newGrid[r][c] = finalLine[r];
+        if (finalLine[r] !== grid[r][c]) moved = true;
+      }
+    }
+  }
+  return { grid: newGrid, scoreGained, moved };
+}
+
+function is2048GameOver(grid){
+  for (let r = 0; r < 4; r++){
+    for (let c = 0; c < 4; c++){
+      if (grid[r][c] === 0) return false;
+      if (c < 3 && grid[r][c] === grid[r][c + 1]) return false;
+      if (r < 3 && grid[r][c] === grid[r + 1][c]) return false;
+    }
+  }
+  return true;
+}
+
+/* Attribue les points des paliers de tuile fraîchement atteints (une seule fois chacun,
+   à vie) et renvoie ce qui vient d'être débloqué pour l'affichage. */
+function check2048Milestones(childId, grid){
+  const maxTile = Math.max(...grid.flat());
+  if (!state.game2048Milestones) state.game2048Milestones = {};
+  if (!state.game2048Milestones[childId]) state.game2048Milestones[childId] = [];
+  const already = state.game2048Milestones[childId];
+  let totalPoints = 0;
+  const newMilestones = [];
+  for (const m of GAME2048_MILESTONES){
+    if (maxTile >= m.value && !already.includes(m.value)){
+      already.push(m.value);
+      totalPoints += m.points;
+      newMilestones.push(m);
+    }
+  }
+  return { totalPoints, newMilestones };
+}
+
+function get2048State(childId){
+  const stored = state.game2048?.[childId];
+  if (stored && stored.grid) return stored;
+  return { grid: new2048Grid(), score: 0, over: false };
+}
+
+function save2048State(childId, gameState){
+  if (!state.game2048) state.game2048 = {};
+  state.game2048[childId] = gameState;
+}
+
 /* Tire les 10 questions du jour pour un jeu donné, dans un ordre stable pour la journée
    (même famille ou pas), à partir d'un bassin de questions bien plus large. */
 function dailyQuestionIndices(gameId, poolSize, count = LOGIC_DAILY_COUNT, dateStr = todayStr()){
@@ -693,6 +822,8 @@ function defaultData(){
     logicTotalSolved: {},  // { childId: nombre total de défis réussis (toutes dates confondues) }
     logicDifficulty: {},    // { childId: { gameId: 'facile' | 'moyen' | 'difficile' } }
     sudokuProgress: {},      // { childId: { difficultyId: { 'YYYY-MM-DD': { grid, completed } } } }
+    game2048: {},            // { childId: { grid, score, over } }
+    game2048Milestones: {},  // { childId: [128, 256, ...] paliers de tuile déjà récompensés }
     wheelSpins: {},         // { childId: { week: 'YYYY-Www', prize: { label, points } } }
     pets: {},                // { childId: { species, totalFeeds, lastFedAt } }
     teamGoalEnabled: false,
@@ -713,6 +844,8 @@ function migrateData(data){
   if (!data.logicProgress || typeof data.logicProgress !== 'object') data.logicProgress = {};
   if (!data.wheelSpins || typeof data.wheelSpins !== 'object') data.wheelSpins = {};
   if (!data.sudokuProgress || typeof data.sudokuProgress !== 'object') data.sudokuProgress = {};
+  if (!data.game2048 || typeof data.game2048 !== 'object') data.game2048 = {};
+  if (!data.game2048Milestones || typeof data.game2048Milestones !== 'object') data.game2048Milestones = {};
   if (!data.pets || typeof data.pets !== 'object') data.pets = {};
   Object.values(data.pets).forEach(pet => {
     if (typeof pet.happiness !== 'number') pet.happiness = 100;
@@ -1277,6 +1410,7 @@ function render(){
   const tabContent = mainTab === 'jeux' ? `
       ${renderLogicGames()}
       ${renderSudoku()}
+      ${render2048()}
       ${renderBadges()}
       ${renderWheel()}
       ${renderLootChest()}
@@ -1305,6 +1439,7 @@ function render(){
   if (mainTab === 'jeux'){
     bindLogicGames();
     bindSudoku();
+    bind2048();
     bindBadges();
     bindWheel();
     bindLootChest();
@@ -1725,6 +1860,95 @@ function renderSudokuModal(){
       renderSudokuModal();
     };
   });
+}
+
+function render2048(){
+  const child = getChild(activeChildId);
+  const g = get2048State(child.id);
+  const best = Math.max(...g.grid.flat(), 0);
+  const nextMilestone = GAME2048_MILESTONES.find(m => m.value > best);
+  return `
+  <section class="logic-panel logic-teaser" aria-labelledby="g2048-title">
+    <div>
+      <h2 id="g2048-title">🎯 2048</h2>
+      <p>Meilleure tuile : ${best || '—'}${nextMilestone ? ` · prochain palier ${nextMilestone.value} (+${nextMilestone.points} pts)` : ' · tous les paliers débloqués !'}</p>
+    </div>
+    <button class="btn btn-gold" id="btn-open-2048">Jouer</button>
+  </section>`;
+}
+
+function bind2048(){
+  const openBtn = document.getElementById('btn-open-2048');
+  if (openBtn) openBtn.onclick = () => render2048Modal();
+}
+
+let touch2048Start = null;
+
+function render2048Modal(){
+  const child = getChild(activeChildId);
+  const g = get2048State(child.id);
+  const cellsHtml = g.grid.flat().map(val => `<div class="g2048-cell ${val ? 'g2048-v' + val : ''}">${val || ''}</div>`).join('');
+  openModal(`
+    <h3 class="modal-title">🎯 2048</h3>
+    <p class="modal-sub">${escapeHtml(child.name)} · Score : ${g.score}</p>
+    ${g.over ? '<div class="logic-complete">Partie terminée ! Plus de mouvement possible.</div>' : ''}
+    <div class="g2048-grid" id="g2048-grid">${cellsHtml}</div>
+    <div class="g2048-controls">
+      <div></div><button type="button" class="g2048-arrow" data-dir="up">⬆️</button><div></div>
+      <button type="button" class="g2048-arrow" data-dir="left">⬅️</button><button type="button" class="g2048-arrow" data-dir="down">⬇️</button><button type="button" class="g2048-arrow" data-dir="right">➡️</button>
+    </div>
+    <p class="help-text" style="text-align:center;">Glisse sur la grille ou utilise les flèches.</p>
+    <div class="modal-actions" style="justify-content:space-between;">
+      <button class="btn btn-ghost" id="btn-2048-new">Nouvelle partie</button>
+      <button class="btn btn-ghost" id="btn-close-2048">Fermer</button>
+    </div>
+  `, { wide: true });
+
+  document.getElementById('btn-close-2048').onclick = closeModal;
+  document.getElementById('btn-2048-new').onclick = () => {
+    save2048State(child.id, { grid: new2048Grid(), score: 0, over: false });
+    saveData();
+    render2048Modal();
+  };
+  document.querySelectorAll('.g2048-arrow').forEach(btn => {
+    btn.onclick = () => play2048Move(child.id, btn.dataset.dir);
+  });
+  const gridEl = document.getElementById('g2048-grid');
+  gridEl.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    touch2048Start = { x: t.clientX, y: t.clientY };
+  }, { passive: true });
+  gridEl.addEventListener('touchend', (e) => {
+    if (!touch2048Start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touch2048Start.x, dy = t.clientY - touch2048Start.y;
+    touch2048Start = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+    const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+    play2048Move(child.id, dir);
+  }, { passive: true });
+}
+
+function play2048Move(childId, direction){
+  const g = get2048State(childId);
+  if (g.over) return;
+  const { grid, scoreGained, moved } = move2048(g.grid, direction);
+  if (!moved) return;
+  spawn2048Tile(grid);
+  const score = g.score + scoreGained;
+  const { totalPoints, newMilestones } = check2048Milestones(childId, grid);
+  const over = is2048GameOver(grid);
+  save2048State(childId, { grid, score, over });
+  if (totalPoints > 0) addPoints(childId, totalPoints);
+  saveData();
+  if (newMilestones.length){
+    launchConfetti();
+    showToast(`Tuile ${newMilestones[newMilestones.length - 1].value} ! +${totalPoints} pts`, '🎉');
+    render();
+  } else if (over){
+    showToast('Partie terminée !', '🏁');
+  }
+  render2048Modal();
 }
 
 function renderBadges(){
