@@ -1799,14 +1799,36 @@ function openSudokuModal(){
   renderSudokuModal();
 }
 
+/* La fenêtre (structure, animation d'ouverture, défilement) n'est créée qu'ici, une seule
+   fois. Chaque coup ne fait ensuite que rafraîchir le contenu via updateSudokuView() —
+   recréer toute la fenêtre à chaque case cochée rejouait l'animation et remontait le
+   défilement à chaque fois, ce qui la faisait paraître figée sur certains téléphones. */
 function renderSudokuModal(){
+  const child = getChild(activeChildId);
+  const difficultyId = childLogicDifficulty(child.id, 'sudoku');
+  openModal(`
+    <h3 class="modal-title">🔢 Sudoku du jour</h3>
+    <p class="modal-sub">${escapeHtml(child.name)} · ${difficultyConfig(difficultyId).label}</p>
+    <div id="sudoku-complete-msg"></div>
+    <div class="sudoku-grid" id="sudoku-grid"></div>
+    <div class="sudoku-palette" id="sudoku-palette"></div>
+    <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-sudoku">Fermer</button></div>
+  `, { wide: true });
+  document.getElementById('btn-close-sudoku').onclick = closeModal;
+  updateSudokuView();
+}
+
+function updateSudokuView(){
   const child = getChild(activeChildId);
   const difficultyId = childLogicDifficulty(child.id, 'sudoku');
   const { puzzle } = getSudokuPuzzle(todayStr(), difficultyId);
   const sudokuState = getSudokuState(child.id, difficultyId);
   const grid = sudokuState.grid;
 
-  const cellsHtml = grid.map((row, r) => row.map((val, c) => {
+  const gridEl = document.getElementById('sudoku-grid');
+  if (!gridEl) return; // la fenêtre a été fermée entre temps
+
+  gridEl.innerHTML = grid.map((row, r) => row.map((val, c) => {
     const isClue = puzzle[r][c] !== 0;
     const conflict = sudokuHasConflict(grid, r, c);
     const selected = sudokuSelectedCell && sudokuSelectedCell[0] === r && sudokuSelectedCell[1] === c;
@@ -1818,28 +1840,20 @@ function renderSudokuModal(){
     if (r % 3 === 0) classes.push('border-top');
     return `<button type="button" class="${classes.join(' ')}" ${isClue || sudokuState.completed ? 'disabled' : `data-cell="${r},${c}"`}>${val || ''}</button>`;
   }).join('')).join('');
-
-  openModal(`
-    <h3 class="modal-title">🔢 Sudoku du jour</h3>
-    <p class="modal-sub">${escapeHtml(child.name)} · ${difficultyConfig(difficultyId).label}</p>
-    ${sudokuState.completed ? '<div class="logic-complete">🏆 Sudoku terminé aujourd\'hui !</div>' : ''}
-    <div class="sudoku-grid">${cellsHtml}</div>
-    ${!sudokuState.completed ? `
-    <div class="sudoku-palette">
-      ${[1,2,3,4,5,6,7,8,9].map(n => `<button type="button" class="sudoku-num" data-num="${n}">${n}</button>`).join('')}
-      <button type="button" class="sudoku-num sudoku-erase" data-num="0">✕</button>
-    </div>` : ''}
-    <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-sudoku">Fermer</button></div>
-  `, { wide: true });
-
-  document.getElementById('btn-close-sudoku').onclick = closeModal;
   document.querySelectorAll('[data-cell]').forEach(btn => {
     btn.onclick = () => {
       const [r, c] = btn.dataset.cell.split(',').map(Number);
       sudokuSelectedCell = [r, c];
-      renderSudokuModal();
+      updateSudokuView();
     };
   });
+
+  const completeEl = document.getElementById('sudoku-complete-msg');
+  if (completeEl) completeEl.innerHTML = sudokuState.completed ? '<div class="logic-complete">🏆 Sudoku terminé aujourd\'hui !</div>' : '';
+
+  const paletteEl = document.getElementById('sudoku-palette');
+  if (!paletteEl) return;
+  paletteEl.innerHTML = sudokuState.completed ? '' : [1,2,3,4,5,6,7,8,9].map(n => `<button type="button" class="sudoku-num" data-num="${n}">${n}</button>`).join('') + `<button type="button" class="sudoku-num sudoku-erase" data-num="0">✕</button>`;
   document.querySelectorAll('[data-num]').forEach(btn => {
     btn.onclick = () => {
       if (!sudokuSelectedCell) return;
@@ -1857,7 +1871,7 @@ function renderSudokuModal(){
         showToast(`Sudoku terminé ! +${points} pts`, '🏆');
         render();
       }
-      renderSudokuModal();
+      updateSudokuView();
     };
   });
 }
@@ -1884,15 +1898,17 @@ function bind2048(){
 
 let touch2048Start = null;
 
+/* Comme pour le sudoku : la fenêtre n'est créée qu'une fois ici, chaque coup ne fait
+   ensuite que rafraîchir la grille/le score via update2048View() (pas de ré-ouverture
+   complète de la fenêtre, qui rejouait l'animation et remontait le défilement à chaque
+   coup sur certains téléphones). */
 function render2048Modal(){
   const child = getChild(activeChildId);
-  const g = get2048State(child.id);
-  const cellsHtml = g.grid.flat().map(val => `<div class="g2048-cell ${val ? 'g2048-v' + val : ''}">${val || ''}</div>`).join('');
   openModal(`
     <h3 class="modal-title">🎯 2048</h3>
-    <p class="modal-sub">${escapeHtml(child.name)} · Score : ${g.score}</p>
-    ${g.over ? '<div class="logic-complete">Partie terminée ! Plus de mouvement possible.</div>' : ''}
-    <div class="g2048-grid" id="g2048-grid">${cellsHtml}</div>
+    <p class="modal-sub" id="g2048-score"></p>
+    <div id="g2048-over"></div>
+    <div class="g2048-grid" id="g2048-grid"></div>
     <div class="g2048-controls">
       <div></div><button type="button" class="g2048-arrow" data-dir="up">⬆️</button><div></div>
       <button type="button" class="g2048-arrow" data-dir="left">⬅️</button><button type="button" class="g2048-arrow" data-dir="down">⬇️</button><button type="button" class="g2048-arrow" data-dir="right">➡️</button>
@@ -1908,7 +1924,7 @@ function render2048Modal(){
   document.getElementById('btn-2048-new').onclick = () => {
     save2048State(child.id, { grid: new2048Grid(), score: 0, over: false });
     saveData();
-    render2048Modal();
+    update2048View();
   };
   document.querySelectorAll('.g2048-arrow').forEach(btn => {
     btn.onclick = () => play2048Move(child.id, btn.dataset.dir);
@@ -1934,6 +1950,20 @@ function render2048Modal(){
     play2048Move(child.id, dir);
   }, { passive: true });
   gridEl.addEventListener('touchcancel', () => { touch2048Start = null; }, { passive: true });
+
+  update2048View();
+}
+
+function update2048View(){
+  const child = getChild(activeChildId);
+  const g = get2048State(child.id);
+  const gridEl = document.getElementById('g2048-grid');
+  if (!gridEl) return; // la fenêtre a été fermée entre temps
+  gridEl.innerHTML = g.grid.flat().map(val => `<div class="g2048-cell ${val ? 'g2048-v' + val : ''}">${val || ''}</div>`).join('');
+  const scoreEl = document.getElementById('g2048-score');
+  if (scoreEl) scoreEl.textContent = `${child.name} · Score : ${g.score}`;
+  const overEl = document.getElementById('g2048-over');
+  if (overEl) overEl.innerHTML = g.over ? '<div class="logic-complete">Partie terminée ! Plus de mouvement possible.</div>' : '';
 }
 
 function play2048Move(childId, direction){
@@ -1955,7 +1985,7 @@ function play2048Move(childId, direction){
   } else if (over){
     showToast('Partie terminée !', '🏁');
   }
-  render2048Modal();
+  update2048View();
 }
 
 function renderBadges(){
