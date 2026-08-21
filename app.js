@@ -847,7 +847,10 @@ function pickWeightedPrize(prizes){
 const PET_SPECIES = {
   dragon: { label: 'Dragon', stages: ['🥚', '🐣', '🐲', '🐉'] },
   licorne: { label: 'Licorne', stages: ['🥚', '🐴', '🦄', '🦄'] },
-  renard: { label: 'Renard', stages: ['🥚', '🦝', '🦊', '🦊'] },
+  renard: { label: 'Renard', stages: ['🥚', '🐾', '🦊', '🦊'] },
+  papillon: { label: 'Papillon', stages: ['🥚', '🐛', '🦋', '🦋'] },
+  chat: { label: 'Chat', stages: ['🥚', '🐱', '🐈', '🐈'] },
+  hibou: { label: 'Hibou', stages: ['🥚', '🐣', '🦉', '🦉'] },
 };
 const PET_FEED_COST = 2;
 const PET_STAGE_THRESHOLDS = [0, 1, 10, 25]; // nombre de fois nourri pour atteindre chaque stade
