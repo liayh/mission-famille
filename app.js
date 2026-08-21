@@ -494,6 +494,12 @@ function migrateData(data){
     if (!pet.lastHappinessCheckAt) pet.lastHappinessCheckAt = Date.now();
     if (pet.lastPettedAt === undefined) pet.lastPettedAt = null;
   });
+  (data.children || []).forEach(child => {
+    if (child.age === undefined) child.age = null;
+    if (typeof child.vacationMode !== 'boolean') child.vacationMode = false;
+    if (child.vacationSince === undefined) child.vacationSince = null;
+    if (!Array.isArray(child.vacationRanges)) child.vacationRanges = [];
+  });
   if (typeof data.teamGoalEnabled !== 'boolean') data.teamGoalEnabled = false;
   if (typeof data.teamGoalThreshold !== 'number' || data.teamGoalThreshold <= 0) data.teamGoalThreshold = 60;
   if (typeof data.teamGoalLabel !== 'string' || !data.teamGoalLabel) data.teamGoalLabel = 'Une sortie en famille';
@@ -671,10 +677,33 @@ function lifetimePoints(childId){
 const XP_PER_LEVEL = 50;
 const LEVEL_TITLES = ['Apprenti', 'Aide précieux', 'Champion du quotidien', 'Héros de la maison', 'Champion de la maison', 'Légende du Royaume'];
 
-function levelInfo(points){
-  const level = 1 + Math.floor(points / XP_PER_LEVEL);
-  const into = points % XP_PER_LEVEL;
-  return { level, into, pct: Math.round((into / XP_PER_LEVEL) * 100), title: LEVEL_TITLES[Math.min(level - 1, LEVEL_TITLES.length - 1)] };
+/* Économie de points allégée pour les tout-petits : moins de points nécessaires pour monter
+   de niveau, récompenses moins chères. Les valeurs de base (missions, coûts des récompenses)
+   ne changent pas — seul l'effet pour un enfant concerné est recalculé à l'affichage. */
+const YOUNG_CHILD_MAX_AGE = 6; // en dessous de cet âge (non inclus)
+const YOUNG_XP_PER_LEVEL = 25;
+const YOUNG_REWARD_COST_MULTIPLIER = 0.5;
+
+function isYoungChild(child){
+  return typeof child?.age === 'number' && child.age < YOUNG_CHILD_MAX_AGE;
+}
+
+function effectiveXpPerLevel(child){
+  return isYoungChild(child) ? YOUNG_XP_PER_LEVEL : XP_PER_LEVEL;
+}
+
+function effectiveRewardCost(child, reward){
+  return isYoungChild(child) ? Math.max(1, Math.round(reward.cost * YOUNG_REWARD_COST_MULTIPLIER)) : reward.cost;
+}
+
+function levelInfo(points, xpPerLevel = XP_PER_LEVEL){
+  const level = 1 + Math.floor(points / xpPerLevel);
+  const into = points % xpPerLevel;
+  return { level, into, pct: Math.round((into / xpPerLevel) * 100), title: LEVEL_TITLES[Math.min(level - 1, LEVEL_TITLES.length - 1)] };
+}
+
+function childLevelInfo(child){
+  return levelInfo(lifetimePoints(child.id), effectiveXpPerLevel(child));
 }
 
 /* Nombre de jours consécutifs (jusqu'à hier ou aujourd'hui) où toutes les missions du jour
@@ -685,6 +714,7 @@ function computeStreak(childId){
   cursor.setHours(0, 0, 0, 0);
   for (let i = 0; i < 365; i++){
     const dateStr = cursor.getFullYear() + '-' + String(cursor.getMonth()+1).padStart(2,'0') + '-' + String(cursor.getDate()).padStart(2,'0');
+    if (isDateInVacation(childId, dateStr)){ cursor.setDate(cursor.getDate() - 1); continue; }
     const dayTasks = state.tasks.filter(t => !t.schoolDaysOnly || isSchoolDay(cursor));
     if (dayTasks.length > 0){
       const completed = state.completions[dateStr]?.[childId] || [];
@@ -724,7 +754,7 @@ const BADGES = [
   { id: 'devoir_30', icon: '📚', label: '30 missions devoirs', check: cid => lifetimeMissionsCount(cid, 'devoir') >= 30 },
   { id: 'logic_50', icon: '🧠', label: '50 défis de logique', check: cid => logicTotalSolved(cid) >= 50 },
   { id: 'first_reward', icon: '🎁', label: 'Première récompense', check: cid => state.redemptions.some(r => r.childId === cid && r.pointsSpent > 0) },
-  { id: 'level_5', icon: '👑', label: 'Niveau 5 atteint', check: cid => levelInfo(lifetimePoints(cid)).level >= 5 },
+  { id: 'level_5', icon: '👑', label: 'Niveau 5 atteint', check: cid => childLevelInfo(getChild(cid)).level >= 5 },
   { id: 'loot_chest', icon: '📦', label: 'Premier coffre ouvert', check: cid => (state.lootChestsOpened[cid] || 0) >= 1 },
 ];
 
@@ -833,26 +863,35 @@ function petStageIndex(totalFeeds){
   return idx;
 }
 
-function petHunger(pet){
+/* "Maintenant" utilisé pour la décroissance faim/bonheur : figé au moment où les vacances
+   ont commencé tant que le mode est actif, pour que le compagnon ne perde rien pendant
+   l'absence. Au retour, setVacationMode() décale les horodatages pour effacer la pause. */
+function petEffectiveNow(childId){
+  const child = getChild(childId);
+  if (child && child.vacationMode && child.vacationSince) return child.vacationSince;
+  return Date.now();
+}
+
+function petHunger(pet, childId){
   if (!pet.lastFedAt) return 0;
-  const hoursSince = (Date.now() - pet.lastFedAt) / 3600000;
+  const hoursSince = (petEffectiveNow(childId) - pet.lastFedAt) / 3600000;
   return Math.max(0, Math.min(100, Math.round(100 - hoursSince * (100 / PET_HUNGER_DECAY_HOURS))));
 }
 
 /* Le bonheur est stocké comme une valeur (pas seulement un horodatage comme la faim) car
    une caresse doit AJOUTER à la valeur déjà décayée, pas la remplacer par un plein — la
    lecture applique la décroissance depuis le dernier "checkpoint" sans le modifier. */
-function petHappiness(pet){
+function petHappiness(pet, childId){
   if (typeof pet.happiness !== 'number') return 100;
   if (!pet.lastHappinessCheckAt) return pet.happiness;
-  const hoursSince = (Date.now() - pet.lastHappinessCheckAt) / 3600000;
+  const hoursSince = (petEffectiveNow(childId) - pet.lastHappinessCheckAt) / 3600000;
   return Math.max(0, Math.min(100, Math.round(pet.happiness - hoursSince * (100 / PET_HAPPINESS_DECAY_HOURS))));
 }
 
 /* Fige la valeur de bonheur décayée dans pet.happiness avant de la modifier (ex. caresse),
    pour ne pas perdre la décroissance déjà écoulée. */
-function checkpointHappiness(pet){
-  pet.happiness = petHappiness(pet);
+function checkpointHappiness(pet, childId){
+  pet.happiness = petHappiness(pet, childId);
   pet.lastHappinessCheckAt = Date.now();
 }
 
@@ -862,8 +901,44 @@ function petPatOnCooldown(pet){
 
 function petNeedsAttention(childId){
   const pet = state.pets[childId];
-  if (!pet) return false;
-  return petHunger(pet) < 30 || petHappiness(pet) < 30;
+  const child = getChild(childId);
+  if (!pet || (child && child.vacationMode)) return false;
+  return petHunger(pet, childId) < 30 || petHappiness(pet, childId) < 30;
+}
+
+/* Bascule le mode vacances d'un enfant. À la désactivation, décale les horodatages du
+   compagnon de la durée de la pause pour que faim/bonheur reprennent exactement où ils en
+   étaient (aucune pénalité pour l'absence). */
+function setVacationMode(child, on){
+  if (on){
+    child.vacationMode = true;
+    child.vacationSince = Date.now();
+    if (!Array.isArray(child.vacationRanges)) child.vacationRanges = [];
+    child.vacationRanges.push({ start: todayStr(), end: null });
+  } else {
+    if (child.vacationMode && child.vacationSince){
+      const pauseDurationMs = Date.now() - child.vacationSince;
+      const pet = state.pets[child.id];
+      if (pet){
+        if (pet.lastFedAt) pet.lastFedAt += pauseDurationMs;
+        checkpointHappiness(pet, child.id);
+        pet.lastHappinessCheckAt += pauseDurationMs;
+        if (pet.lastPettedAt) pet.lastPettedAt += pauseDurationMs;
+      }
+    }
+    child.vacationMode = false;
+    child.vacationSince = null;
+    if (Array.isArray(child.vacationRanges) && child.vacationRanges.length){
+      const last = child.vacationRanges[child.vacationRanges.length - 1];
+      if (last.end === null) last.end = todayStr();
+    }
+  }
+}
+
+function isDateInVacation(childId, dateStr){
+  const child = getChild(childId);
+  if (!child || !Array.isArray(child.vacationRanges)) return false;
+  return child.vacationRanges.some(r => dateStr >= r.start && (!r.end || dateStr <= r.end));
 }
 
 function petMoodLabel(hunger, happiness){
@@ -1139,7 +1214,7 @@ function renderChildRow(){
   const items = state.children.map(c => {
     const pct = todayProgress(c.id);
     const euros = totalEuros(c.id);
-    const li = levelInfo(lifetimePoints(c.id));
+    const li = childLevelInfo(c);
     const streak = computeStreak(c.id);
     return `
     <button class="child-tab ${c.id === activeChildId ? 'active' : ''}" data-child="${c.id}">
@@ -1147,7 +1222,7 @@ function renderChildRow(){
       <div class="child-meta">
         <span class="child-name">${escapeHtml(c.name)}${streak > 0 ? ` <span class="streak-flame" title="${streak} jours d'affilée">🔥${escapeHtml(streak)}</span>` : ''}</span>
         <span class="child-points">★ ${escapeHtml(getPoints(c.id))} pts · Niv. ${li.level} ${escapeHtml(li.title)}</span>
-        <div class="xp-bar-mini" title="${li.into} / ${XP_PER_LEVEL} pts vers le niveau ${li.level + 1}"><div class="xp-bar-mini-fill" style="width:${li.pct}%;"></div></div>
+        <div class="xp-bar-mini" title="${li.into} / ${effectiveXpPerLevel(c)} pts vers le niveau ${li.level + 1}"><div class="xp-bar-mini-fill" style="width:${li.pct}%;"></div></div>
         ${euros > 0 ? `<span class="child-euros">💶 ${escapeHtml(euros)} € récoltés</span>` : ''}
       </div>
     </button>`;
@@ -1180,7 +1255,8 @@ function renderCalendar(){
     const done = tasks.filter(task => completed.includes(task.id)).length;
     const isFuture = date > new Date();
     const status = isFuture ? 'future' : (tasks.length > 0 && done === tasks.length ? 'complete' : done > 0 ? 'partial' : 'empty');
-    cells.push(`<div class="calendar-day ${status}" title="${done} / ${tasks.length} mission(s)"><span>${day}</span>${tasks.length && !isFuture ? `<small>${done}/${tasks.length}</small>` : ''}</div>`);
+    const canOpen = tasks.length > 0 && !isFuture;
+    cells.push(`<div class="calendar-day ${status}${canOpen ? ' clickable' : ''}" ${canOpen ? `data-day="${dateKey}"` : ''} title="${done} / ${tasks.length} mission(s)${canOpen ? ' · code parent requis' : ''}"><span>${day}</span>${tasks.length && !isFuture ? `<small>${done}/${tasks.length}</small>` : ''}</div>`);
   }
 
   return `
@@ -1206,6 +1282,30 @@ function bindCalendar(){
     calendarMonth = monthKey(new Date(year, monthNumber, 1));
     render();
   };
+  document.querySelectorAll('.calendar-day[data-day]').forEach(el => {
+    el.onclick = () => requireAdmin(() => openDayDetailModal(el.dataset.day));
+  });
+}
+
+/* Détail jour par jour des missions faites/non faites, réservé aux parents (code PIN). */
+function openDayDetailModal(dateKey){
+  const child = getChild(activeChildId);
+  if (!child) return;
+  const date = new Date(dateKey + 'T00:00:00');
+  const tasks = state.tasks.filter(t => !t.schoolDaysOnly || isSchoolDay(date));
+  const completed = state.completions[dateKey]?.[child.id] || [];
+  const rows = tasks.map(t => `
+    <div class="list-row">
+      <span style="font-size:20px;">${completed.includes(t.id) ? '✅' : '⬜'}</span>
+      <div class="grow"><div class="rname">${escapeHtml(t.label)}</div><div class="rmeta">${t.type === 'menage' ? 'Ménage' : 'Devoir'} · +${escapeHtml(t.points)} pts</div></div>
+    </div>`).join('') || '<p class="help-text">Aucune mission ce jour-là.</p>';
+  openModal(`
+    <h3 class="modal-title">📅 ${escapeHtml(formatDateLong(date))}</h3>
+    <p class="modal-sub">${escapeHtml(child.name)}</p>
+    ${rows}
+    <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-day-detail">Fermer</button></div>
+  `, { wide: true });
+  document.getElementById('btn-close-day-detail').onclick = closeModal;
 }
 
 function logicDoneCount(childId, gameId){
@@ -1471,8 +1571,8 @@ function renderCompagnonTab(){
   }
   const species = PET_SPECIES[pet.species];
   const stage = petStageIndex(pet.totalFeeds);
-  const hunger = petHunger(pet);
-  const happiness = petHappiness(pet);
+  const hunger = petHunger(pet, child.id);
+  const happiness = petHappiness(pet, child.id);
   const canFeed = getPoints(child.id) >= PET_FEED_COST;
   const onCooldown = petPatOnCooldown(pet);
   return `
@@ -1534,7 +1634,7 @@ function bindCompagnonTab(){
     const child = getChild(activeChildId);
     const pet = state.pets[child.id];
     if (!pet || petPatOnCooldown(pet)) return;
-    checkpointHappiness(pet);
+    checkpointHappiness(pet, child.id);
     pet.happiness = Math.min(100, pet.happiness + PET_PAT_GAIN);
     pet.lastPettedAt = Date.now();
     saveData();
@@ -1629,6 +1729,17 @@ function openLogicQuestion(gameId, questionIndex){
 
 function renderBoard(){
   const child = getChild(activeChildId);
+  if (child.vacationMode){
+    return `
+    <div class="board">
+      <div class="panel vacation-panel">
+        <div class="panel-head"><h2>🏖️ En vacances</h2><span class="sub">${escapeHtml(child.name)}</span></div>
+        <div class="panel-body">
+          <p class="help-text">Les missions de ${escapeHtml(child.name)} sont en pause pendant les vacances — rien à faire ici, et le compagnon comme la série de jours n'y perdent rien. Un parent peut désactiver la pause dans Réglages → Enfants.</p>
+        </div>
+      </div>
+    </div>`;
+  }
   const tasks = tasksForChildToday();
   const menage = tasks.filter(t => t.type === 'menage');
   const devoirs = tasks.filter(t => t.type === 'devoir');
@@ -1656,20 +1767,21 @@ function renderBoard(){
     ? `<div class="no-tasks">Aucune récompense configurée. Ajoutez-en dans les réglages parent.</div>`
     : state.rewards.map(r => {
         const pts = getPoints(child.id);
-        const pct = Math.min(100, Math.round((pts / r.cost) * 100));
-        const unlocked = pts >= r.cost;
+        const cost = effectiveRewardCost(child, r);
+        const pct = Math.min(100, Math.round((pts / cost) * 100));
+        const unlocked = pts >= cost;
         return `
         <div class="reward-card ${unlocked ? 'unlocked' : ''}">
           <div class="reward-top">
             <div class="reward-icon">${escapeHtml(r.icon)}</div>
             <div class="grow">
               <div class="reward-name">${escapeHtml(r.label)}</div>
-              <div class="reward-cost">${escapeHtml(r.cost)} pts</div>
+              <div class="reward-cost">${escapeHtml(cost)} pts</div>
             </div>
           </div>
           <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
           <div class="reward-bottom">
-            <span class="reward-status ${unlocked ? 'unlocked' : ''}">${unlocked ? '🔓 Débloqué' : pts + ' / ' + r.cost + ' pts'}</span>
+            <span class="reward-status ${unlocked ? 'unlocked' : ''}">${unlocked ? '🔓 Débloqué' : pts + ' / ' + cost + ' pts'}</span>
             <button class="btn btn-sm ${unlocked ? 'btn-gold' : 'btn-ghost'}" data-redeem="${r.id}" ${unlocked && !hasPendingRequest(child.id, r.id) ? '' : 'disabled'}>${hasPendingRequest(child.id, r.id) ? 'Demande envoyée' : 'Demander'}</button>
           </div>
         </div>`;
@@ -1735,10 +1847,10 @@ function hasPendingRequest(childId, rewardId){
 function requestReward(rewardId){
   const child = getChild(activeChildId);
   const reward = state.rewards.find(item => item.id === rewardId);
-  if (!child || !reward || getPoints(child.id) < reward.cost || hasPendingRequest(child.id, reward.id)) return;
+  if (!child || !reward || getPoints(child.id) < effectiveRewardCost(child, reward) || hasPendingRequest(child.id, reward.id)) return;
   state.pendingRequests.unshift({ id: uid('req'), childId: child.id, rewardId: reward.id, date: new Date().toISOString() });
   saveData();
-  notifyParent('🔔 Nouvelle demande', `${child.name} demande « ${reward.label} » (${reward.cost} pts)`);
+  notifyParent('🔔 Nouvelle demande', `${child.name} demande « ${reward.label} » (${effectiveRewardCost(child, reward)} pts)`);
   showToast(`Demande envoyée aux parents`, '🔔');
   render();
 }
@@ -1748,7 +1860,7 @@ function openParentRequests(){
     const child = getChild(request.childId);
     const reward = state.rewards.find(item => item.id === request.rewardId);
     if (!child || !reward) return '';
-    return `<div class="request-row"><div class="grow"><strong>${escapeHtml(child.avatar)} ${escapeHtml(child.name)}</strong><span>demande ${escapeHtml(reward.icon)} ${escapeHtml(reward.label)} (${escapeHtml(reward.cost)} pts)</span></div><div class="row-actions"><button class="btn btn-sm btn-gold" data-approve-request="${request.id}">Valider</button><button class="icon-mini" data-reject-request="${request.id}" title="Refuser">✕</button></div></div>`;
+    return `<div class="request-row"><div class="grow"><strong>${escapeHtml(child.avatar)} ${escapeHtml(child.name)}</strong><span>demande ${escapeHtml(reward.icon)} ${escapeHtml(reward.label)} (${escapeHtml(effectiveRewardCost(child, reward))} pts)</span></div><div class="row-actions"><button class="btn btn-sm btn-gold" data-approve-request="${request.id}">Valider</button><button class="icon-mini" data-reject-request="${request.id}" title="Refuser">✕</button></div></div>`;
   }).join('');
   const childNames = [...new Set(state.pendingRequests.map(request => getChild(request.childId)?.name).filter(Boolean))];
   const namesLabel = childNames.length ? childNames.join(' et ') : 'vos enfants';
@@ -1768,14 +1880,15 @@ function approveRequest(requestId){
   if (!request) return;
   const child = getChild(request.childId);
   const reward = state.rewards.find(item => item.id === request.rewardId);
-  if (!child || !reward || getPoints(child.id) < reward.cost){
+  const cost = child && reward ? effectiveRewardCost(child, reward) : 0;
+  if (!child || !reward || getPoints(child.id) < cost){
     rejectRequest(requestId);
     return;
   }
   withUndo(() => {
-    addPoints(child.id, -reward.cost);
+    addPoints(child.id, -cost);
     state.pendingRequests = state.pendingRequests.filter(item => item.id !== requestId);
-    state.redemptions.unshift({ id: uid('red'), childId: child.id, rewardId: reward.id, rewardLabel: reward.label, rewardIcon: reward.icon, date: new Date().toISOString(), pointsSpent: reward.cost });
+    state.redemptions.unshift({ id: uid('red'), childId: child.id, rewardId: reward.id, rewardLabel: reward.label, rewardIcon: reward.icon, date: new Date().toISOString(), pointsSpent: cost });
     saveData();
   }, `Demande de ${child.name} validée`, '✅');
   launchConfetti();
@@ -1828,16 +1941,17 @@ function confirmRedeem(rewardId){
   const child = getChild(activeChildId);
   const reward = state.rewards.find(r => r.id === rewardId);
   if (!child || !reward) return;
+  const cost = effectiveRewardCost(child, reward);
   openConfirmModal({
     title: 'Confirmer la récompense',
-    body: `Valider que <strong>${escapeHtml(child.name)}</strong> utilise <strong>${escapeHtml(reward.icon)} ${escapeHtml(reward.label)}</strong> pour <strong>${escapeHtml(reward.cost)} pts</strong> ?`,
+    body: `Valider que <strong>${escapeHtml(child.name)}</strong> utilise <strong>${escapeHtml(reward.icon)} ${escapeHtml(reward.label)}</strong> pour <strong>${escapeHtml(cost)} pts</strong> ?`,
     confirmLabel: 'Valider',
     onConfirm: () => {
-      addPoints(child.id, -reward.cost);
+      addPoints(child.id, -cost);
       state.redemptions.unshift({
         id: uid('red'), childId: child.id, rewardId: reward.id,
         rewardLabel: reward.label, rewardIcon: reward.icon,
-        date: new Date().toISOString(), pointsSpent: reward.cost,
+        date: new Date().toISOString(), pointsSpent: cost,
       });
       saveData();
       showToast(`${reward.label} débloqué pour ${child.name} !`, reward.icon);
@@ -2097,7 +2211,7 @@ function openDeductPointsModal(childId){
 function openChildForm(existing){
   const editing = existing && existing.id;
   let selectedEmoji = editing ? existing.avatar : EMOJIS[0];
-  const childLevel = editing ? levelInfo(lifetimePoints(existing.id)).level : 1;
+  const childLevel = editing ? childLevelInfo(existing).level : 1;
   const unlockedAvatars = UNLOCKABLE_AVATARS.filter(a => childLevel >= a.minLevel);
   const lockedAvatars = UNLOCKABLE_AVATARS.filter(a => childLevel < a.minLevel);
   openModal(`
@@ -2105,6 +2219,11 @@ function openChildForm(existing){
     <div class="field">
       <label for="child-name">Prénom</label>
       <input type="text" id="child-name" maxlength="24" value="${editing ? escapeHtml(existing.name) : ''}" placeholder="Ex : Léo">
+    </div>
+    <div class="field">
+      <label for="child-age">Âge</label>
+      <input type="number" id="child-age" min="0" max="18" value="${editing && typeof existing.age === 'number' ? existing.age : ''}" placeholder="Ex : 8">
+      <p class="help-text" style="margin-top:4px;">En dessous de ${YOUNG_CHILD_MAX_AGE} ans : moins de points nécessaires pour monter de niveau et récompenses moins chères.</p>
     </div>
     <div class="field">
       <label>Avatar</label>
@@ -2134,11 +2253,14 @@ function openChildForm(existing){
   document.getElementById('btn-save').onclick = () => {
     const name = document.getElementById('child-name').value.trim();
     if (!name){ showToast('Merci de saisir un prénom', '⚠️'); return; }
+    const ageRaw = document.getElementById('child-age').value;
+    const age = ageRaw === '' ? null : Math.max(0, Math.min(18, parseInt(ageRaw, 10) || 0));
     if (editing){
       existing.name = name;
       existing.avatar = selectedEmoji;
+      existing.age = age;
     } else {
-      const child = { id: uid('c'), name, avatar: selectedEmoji };
+      const child = { id: uid('c'), name, avatar: selectedEmoji, age };
       state.children.push(child);
       state.points[child.id] = 0;
       activeChildId = child.id;
@@ -2199,9 +2321,13 @@ function childrenSettingsHtml(){
   const rows = state.children.map(c => `
     <div class="list-row">
       <span style="font-size:22px;">${escapeHtml(c.avatar)}</span>
-      <div class="grow"><div class="rname">${escapeHtml(c.name)}</div><div class="rmeta">★ ${escapeHtml(getPoints(c.id))} pts</div></div>
+      <div class="grow">
+        <div class="rname">${escapeHtml(c.name)}</div>
+        <div class="rmeta">★ ${escapeHtml(getPoints(c.id))} pts${typeof c.age === 'number' ? ` · ${escapeHtml(c.age)} ans` : ''}${c.vacationMode ? ' · 🏖️ en vacances' : ''}</div>
+      </div>
       <div class="row-actions">
         <button class="icon-mini" data-edit-child="${c.id}" title="Modifier">✏️</button>
+        <button class="icon-mini" data-toggle-vacation="${c.id}" title="${c.vacationMode ? 'Désactiver le mode vacances' : 'Mettre en pause (vacances, colonie...)'}">${c.vacationMode ? '☀️' : '🏖️'}</button>
         <button class="icon-mini" data-deduct-points="${c.id}" title="Retirer des points (dispute, comportement...)">➖</button>
         <button class="icon-mini" data-reset-points="${c.id}" title="Réinitialiser les points">↺</button>
         <button class="icon-mini" data-del-child="${c.id}" title="Supprimer">🗑️</button>
@@ -2282,7 +2408,7 @@ function statsSettingsHtml(){
   if (!state.children.length) return '<p class="help-text">Aucun enfant pour le moment.</p>';
   return state.children.map(c => {
     const streak = computeStreak(c.id);
-    const li = levelInfo(lifetimePoints(c.id));
+    const li = childLevelInfo(c);
     const weekly = weeklyPointsSeries(c.id, 8);
     const max = Math.max(1, ...weekly);
     const bars = weekly.map((v, i) => `<div class="stat-bar" style="height:${Math.max(3, Math.round((v/max)*100))}%;" title="${i === weekly.length-1 ? 'Cette semaine' : 'Il y a ' + (weekly.length-1-i) + ' semaine(s)'} : ${v} pts"></div>`).join('');
@@ -2353,6 +2479,17 @@ function bindSettingsContent(){
   if (newChildBtn) newChildBtn.onclick = () => openChildForm();
   document.querySelectorAll('[data-edit-child]').forEach(el => {
     el.onclick = () => openChildForm(getChild(el.dataset.editChild));
+  });
+  document.querySelectorAll('[data-toggle-vacation]').forEach(el => {
+    el.onclick = () => {
+      const child = getChild(el.dataset.toggleVacation);
+      if (!child) return;
+      setVacationMode(child, !child.vacationMode);
+      saveData();
+      showToast(child.vacationMode ? `${child.name} est en vacances` : `${child.name} n'est plus en vacances`, '🏖️');
+      renderSettingsModal();
+      render();
+    };
   });
   document.querySelectorAll('[data-deduct-points]').forEach(el => {
     el.onclick = () => openDeductPointsModal(el.dataset.deductPoints);
