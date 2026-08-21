@@ -15,6 +15,14 @@ const STORAGE_KEY = 'missionFamilleData_v1';
 const SESSION_KEY = 'missionFamilleAdminUnlocked';
 
 const EMOJIS = ['👦','👧','🧒','👶','🐱','🐶','🦁','🐻','🦊','🐼','🐵','🐸','🦄','🐧','🐢','🦖'];
+const UNLOCKABLE_AVATARS = [
+  { emoji: '🐲', minLevel: 3, label: 'Dragon' },
+  { emoji: '🥷', minLevel: 4, label: 'Ninja' },
+  { emoji: '🧙', minLevel: 5, label: 'Magicien' },
+  { emoji: '🦸', minLevel: 6, label: 'Super-héros' },
+  { emoji: '👑', minLevel: 8, label: 'Couronne' },
+  { emoji: '🌟', minLevel: 10, label: 'Étoile' },
+];
 const REWARD_ICONS = ['📺','🎮','🎬','🍽️','🍦','🎳','🚲','🏊','🎨','⚽'];
 const WEEKDAYS_SHORT = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
 const THEMES = {
@@ -466,6 +474,7 @@ function defaultData(){
     teamGoalThreshold: 60,   // points cumulés (tous enfants) à atteindre chaque semaine
     teamGoalLabel: 'Une sortie en famille',
     teamGoalClaims: {},      // { 'YYYY-Www': true } semaines déjà célébrées
+    lootChestsOpened: {},    // { childId: nombre total de coffres ouverts }
   };
 }
 
@@ -483,6 +492,7 @@ function migrateData(data){
   if (typeof data.teamGoalThreshold !== 'number' || data.teamGoalThreshold <= 0) data.teamGoalThreshold = 60;
   if (typeof data.teamGoalLabel !== 'string' || !data.teamGoalLabel) data.teamGoalLabel = 'Une sortie en famille';
   if (!data.teamGoalClaims || typeof data.teamGoalClaims !== 'object') data.teamGoalClaims = {};
+  if (!data.lootChestsOpened || typeof data.lootChestsOpened !== 'object') data.lootChestsOpened = {};
 
   // Migration ponctuelle (une seule fois) : ajoute les missions ménage introduites
   // après la première version, sans les ré-ajouter si le parent les a supprimées ensuite.
@@ -709,6 +719,7 @@ const BADGES = [
   { id: 'logic_50', icon: '🧠', label: '50 défis de logique', check: cid => logicTotalSolved(cid) >= 50 },
   { id: 'first_reward', icon: '🎁', label: 'Première récompense', check: cid => state.redemptions.some(r => r.childId === cid && r.pointsSpent > 0) },
   { id: 'level_5', icon: '👑', label: 'Niveau 5 atteint', check: cid => levelInfo(lifetimePoints(cid)).level >= 5 },
+  { id: 'loot_chest', icon: '📦', label: 'Premier coffre ouvert', check: cid => (state.lootChestsOpened[cid] || 0) >= 1 },
 ];
 
 /* Points gagnés par semaine sur les `weeks` dernières semaines (la plus récente en dernier),
@@ -778,14 +789,24 @@ const WHEEL_PRIZES = [
   { label: '👑 Méga jackpot ! +15 points', points: 15, weight: 3 },
 ];
 
-function pickWheelPrize(){
-  const total = WHEEL_PRIZES.reduce((sum, p) => sum + p.weight, 0);
+const LOOT_CHEST_COST = 5;
+const LOOT_CHEST_PRIZES = [
+  { label: '+2 points', points: 2, weight: 30 },
+  { label: '+4 points', points: 4, weight: 25 },
+  { label: '+6 points', points: 6, weight: 20 },
+  { label: '+8 points', points: 8, weight: 15 },
+  { label: '🎉 +15 points', points: 15, weight: 7 },
+  { label: '👑 +25 points', points: 25, weight: 3 },
+];
+
+function pickWeightedPrize(prizes){
+  const total = prizes.reduce((sum, p) => sum + p.weight, 0);
   let r = Math.random() * total;
-  for (const prize of WHEEL_PRIZES){
+  for (const prize of prizes){
     if (r < prize.weight) return prize;
     r -= prize.weight;
   }
-  return WHEEL_PRIZES[0];
+  return prizes[0];
 }
 
 const PET_SPECIES = {
@@ -900,6 +921,7 @@ function render(){
     ${renderLogicGames()}
     ${renderBadges()}
     ${renderWheel()}
+    ${renderLootChest()}
     ${renderPet()}
     ${renderBoard()}
     ${renderCalendar()}
@@ -913,6 +935,7 @@ function render(){
   bindLogicGames();
   bindBadges();
   bindWheel();
+  bindLootChest();
   bindPet();
   bindBoard();
 }
@@ -1242,7 +1265,7 @@ function openWheelModal(){
     wheelEl.classList.add('spinning');
     document.getElementById('wheel-feedback').textContent = 'La roue tourne...';
     setTimeout(() => {
-      const prize = pickWheelPrize();
+      const prize = pickWeightedPrize(WHEEL_PRIZES);
       state.wheelSpins[child.id] = { week: weekKey(), prize };
       addPoints(child.id, prize.points);
       saveData();
@@ -1253,6 +1276,70 @@ function openWheelModal(){
       render();
     }, 1100);
   };
+}
+
+function renderLootChest(){
+  const child = getChild(activeChildId);
+  const canOpen = getPoints(child.id) >= LOOT_CHEST_COST;
+  return `
+  <section class="logic-panel logic-teaser" aria-labelledby="chest-title">
+    <div>
+      <h2 id="chest-title">📦 Coffre à Butin</h2>
+      <p>Tente ta chance autant de fois que tu veux !</p>
+    </div>
+    <button class="btn btn-gold" id="btn-open-chest" ${canOpen ? '' : 'disabled'}>Ouvrir (-${LOOT_CHEST_COST} pts)</button>
+  </section>`;
+}
+
+function bindLootChest(){
+  const openBtn = document.getElementById('btn-open-chest');
+  if (openBtn) openBtn.onclick = () => openLootChestModal();
+}
+
+function openLootChestModal(){
+  const child = getChild(activeChildId);
+  if (!child || getPoints(child.id) < LOOT_CHEST_COST) return;
+  openModal(`
+    <h3 class="modal-title">📦 Coffre à Butin</h3>
+    <p class="modal-sub">${escapeHtml(child.name)} · ${LOOT_CHEST_COST} pts pour tenter ta chance</p>
+    <div class="wheel-emoji" id="chest-emoji">📦</div>
+    <p class="logic-feedback" id="chest-feedback"></p>
+    <div class="modal-actions"><button class="btn btn-gold" id="btn-open-chest-confirm">Ouvrir pour ${LOOT_CHEST_COST} pts</button></div>
+  `);
+  const confirmBtn = document.getElementById('btn-open-chest-confirm');
+  confirmBtn.onclick = () => {
+    confirmBtn.disabled = true;
+    addPoints(child.id, -LOOT_CHEST_COST);
+    document.getElementById('chest-emoji').classList.add('spinning');
+    document.getElementById('chest-feedback').textContent = 'Ouverture du coffre...';
+    setTimeout(() => {
+      const prize = pickWeightedPrize(LOOT_CHEST_PRIZES);
+      addPoints(child.id, prize.points);
+      state.lootChestsOpened[child.id] = (state.lootChestsOpened[child.id] || 0) + 1;
+      saveData();
+      launchConfetti();
+      showToast(prize.label, '📦');
+      render();
+      openLootChestPrizeReveal(child, prize);
+    }, 1100);
+  };
+}
+
+function openLootChestPrizeReveal(child, prize){
+  const canReplay = getPoints(child.id) >= LOOT_CHEST_COST;
+  openModal(`
+    <h3 class="modal-title">📦 Coffre à Butin</h3>
+    <p class="modal-sub">${escapeHtml(child.name)}</p>
+    <div class="logic-complete">${escapeHtml(prize.label)}</div>
+    ${!canReplay ? `<p class="help-text" style="text-align:center;">Plus assez de points pour rejouer.</p>` : ''}
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btn-close-chest">Fermer</button>
+      ${canReplay ? `<button class="btn btn-gold" id="btn-open-chest-again">Rejouer</button>` : ''}
+    </div>
+  `);
+  document.getElementById('btn-close-chest').onclick = closeModal;
+  const againBtn = document.getElementById('btn-open-chest-again');
+  if (againBtn) againBtn.onclick = () => openLootChestModal();
 }
 
 function renderSiblingChallenge(){
@@ -1902,6 +1989,9 @@ function openDeductPointsModal(childId){
 function openChildForm(existing){
   const editing = existing && existing.id;
   let selectedEmoji = editing ? existing.avatar : EMOJIS[0];
+  const childLevel = editing ? levelInfo(lifetimePoints(existing.id)).level : 1;
+  const unlockedAvatars = UNLOCKABLE_AVATARS.filter(a => childLevel >= a.minLevel);
+  const lockedAvatars = UNLOCKABLE_AVATARS.filter(a => childLevel < a.minLevel);
   openModal(`
     <h3 class="modal-title">${editing ? 'Modifier' : 'Ajouter'} un enfant</h3>
     <div class="field">
@@ -1912,7 +2002,13 @@ function openChildForm(existing){
       <label>Avatar</label>
       <div class="emoji-picker" id="emoji-picker">
         ${EMOJIS.map(e => `<button type="button" class="emoji-opt ${e === selectedEmoji ? 'selected' : ''}" data-emoji="${e}">${e}</button>`).join('')}
+        ${unlockedAvatars.map(a => `<button type="button" class="emoji-opt ${a.emoji === selectedEmoji ? 'selected' : ''}" data-emoji="${a.emoji}" title="${escapeHtml(a.label)}">${a.emoji}</button>`).join('')}
       </div>
+      ${lockedAvatars.length ? `
+      <div class="emoji-picker locked-avatars">
+        ${lockedAvatars.map(a => `<span class="emoji-opt locked" title="${escapeHtml(a.label)} — débloqué au niveau ${a.minLevel}">🔒</span>`).join('')}
+      </div>
+      <p class="help-text" style="margin-top:6px;">Avatars à débloquer en montant de niveau : ${lockedAvatars.map(a => `niv. ${a.minLevel}`).join(', ')}</p>` : ''}
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="btn-cancel">Annuler</button>
