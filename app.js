@@ -3611,7 +3611,21 @@ function init(){
       .catch(() => showToast('Connexion au cloud impossible, données locales utilisées', '⚠️'));
   }
   if ('serviceWorker' in navigator){
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+      // Sans ça, une nouvelle version déployée s'installe bien (skipWaiting côté sw.js)
+      // mais reste inactive tant que la page n'est pas rechargée — l'utilisateur devait
+      // fermer/rouvrir l'application pour voir le moindre changement, y compris dans le
+      // code des jeux, sans que ce soit un bug de leur logique. clients.claim() (côté
+      // sw.js) fait prendre le contrôle par le nouveau service worker dès qu'il s'active ;
+      // on écoute cet instant précis pour recharger tout seul, une seule fois.
+      let reloadedOnce = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloadedOnce) return;
+        reloadedOnce = true;
+        location.reload();
+      });
+    });
   }
 }
 
