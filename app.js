@@ -326,6 +326,141 @@ function dailySeed(str){
   return hash;
 }
 
+function shuffledSeeded(items, rng){
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i--){
+    const j = Math.floor(rng() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+/* ---------------------------- sudoku du jour ---------------------------- */
+
+const SUDOKU_DIFFICULTY_CONFIG = {
+  facile: { clues: 40, points: 5 },
+  moyen: { clues: 32, points: 8 },
+  difficile: { clues: 26, points: 12 },
+};
+
+function sudokuEmptyGrid(){
+  return Array.from({ length: 9 }, () => Array(9).fill(0));
+}
+
+function sudokuIsValid(grid, row, col, num){
+  for (let i = 0; i < 9; i++){
+    if (i !== col && grid[row][i] === num) return false;
+    if (i !== row && grid[i][col] === num) return false;
+  }
+  const boxRow = Math.floor(row / 3) * 3, boxCol = Math.floor(col / 3) * 3;
+  for (let r = 0; r < 3; r++){
+    for (let c = 0; c < 3; c++){
+      if ((boxRow + r !== row || boxCol + c !== col) && grid[boxRow + r][boxCol + c] === num) return false;
+    }
+  }
+  return true;
+}
+
+function sudokuFillGrid(grid, rng){
+  for (let pos = 0; pos < 81; pos++){
+    const row = Math.floor(pos / 9), col = pos % 9;
+    if (grid[row][col] !== 0) continue;
+    for (const num of shuffledSeeded([1,2,3,4,5,6,7,8,9], rng)){
+      if (sudokuIsValid(grid, row, col, num)){
+        grid[row][col] = num;
+        if (sudokuFillGrid(grid, rng)) return true;
+        grid[row][col] = 0;
+      }
+    }
+    return false;
+  }
+  return true;
+}
+
+/* Compte les solutions d'une grille (s'arrête dès que `limit` est atteint) — sert à vérifier
+   qu'un indice retiré ne casse pas l'unicité de la solution du sudoku généré. */
+function sudokuCountSolutions(grid, limit){
+  let count = 0;
+  function solve(){
+    if (count >= limit) return;
+    let row = -1, col = -1;
+    outer: for (let r = 0; r < 9; r++){
+      for (let c = 0; c < 9; c++){
+        if (grid[r][c] === 0){ row = r; col = c; break outer; }
+      }
+    }
+    if (row === -1){ count++; return; }
+    for (let num = 1; num <= 9; num++){
+      if (sudokuIsValid(grid, row, col, num)){
+        grid[row][col] = num;
+        solve();
+        grid[row][col] = 0;
+        if (count >= limit) return;
+      }
+    }
+  }
+  solve();
+  return count;
+}
+
+const sudokuPuzzleCache = {};
+
+/* Génère (et met en cache) le sudoku du jour pour une difficulté donnée : une grille pleine
+   valide tirée au sort de façon déterministe (même sudoku pour tout le monde ce jour-là),
+   puis des indices retirés un par un tant que la solution reste unique. */
+function getSudokuPuzzle(dateStr, difficultyId){
+  const key = dateStr + ':' + difficultyId;
+  if (!sudokuPuzzleCache[key]){
+    const rng = seededRandom(dailySeed('sudoku:' + key));
+    const solution = sudokuEmptyGrid();
+    sudokuFillGrid(solution, rng);
+    const puzzle = solution.map(row => [...row]);
+    const cellOrder = shuffledSeeded(Array.from({ length: 81 }, (_, i) => i), rng);
+    const targetRemoved = 81 - SUDOKU_DIFFICULTY_CONFIG[difficultyId].clues;
+    let removed = 0;
+    for (const pos of cellOrder){
+      if (removed >= targetRemoved) break;
+      const row = Math.floor(pos / 9), col = pos % 9;
+      const backup = puzzle[row][col];
+      puzzle[row][col] = 0;
+      const solCount = sudokuCountSolutions(puzzle.map(r => [...r]), 2);
+      if (solCount === 1) removed++;
+      else puzzle[row][col] = backup;
+    }
+    sudokuPuzzleCache[key] = { puzzle, solution };
+  }
+  return sudokuPuzzleCache[key];
+}
+
+function getSudokuState(childId, difficultyId){
+  const dateStr = todayStr();
+  const { puzzle } = getSudokuPuzzle(dateStr, difficultyId);
+  const stored = state.sudokuProgress?.[childId]?.[difficultyId]?.[dateStr];
+  if (stored && stored.grid) return stored;
+  return { grid: puzzle.map(row => [...row]), completed: false };
+}
+
+function saveSudokuState(childId, difficultyId, sudokuState){
+  if (!state.sudokuProgress) state.sudokuProgress = {};
+  if (!state.sudokuProgress[childId]) state.sudokuProgress[childId] = {};
+  if (!state.sudokuProgress[childId][difficultyId]) state.sudokuProgress[childId][difficultyId] = {};
+  state.sudokuProgress[childId][difficultyId][todayStr()] = sudokuState;
+}
+
+function sudokuHasConflict(grid, row, col){
+  const val = grid[row][col];
+  return val ? !sudokuIsValid(grid, row, col, val) : false;
+}
+
+function sudokuIsComplete(grid){
+  for (let r = 0; r < 9; r++){
+    for (let c = 0; c < 9; c++){
+      if (!grid[r][c] || sudokuHasConflict(grid, r, c)) return false;
+    }
+  }
+  return true;
+}
+
 /* Tire les 10 questions du jour pour un jeu donné, dans un ordre stable pour la journée
    (même famille ou pas), à partir d'un bassin de questions bien plus large. */
 function dailyQuestionIndices(gameId, poolSize, count = LOGIC_DAILY_COUNT, dateStr = todayStr()){
@@ -557,6 +692,7 @@ function defaultData(){
     logicProgress: {},     // { childId: { gameId: { difficultyId: { 'YYYY-MM-DD': [questionIndex du jour, ...] } } } }
     logicTotalSolved: {},  // { childId: nombre total de défis réussis (toutes dates confondues) }
     logicDifficulty: {},    // { childId: { gameId: 'facile' | 'moyen' | 'difficile' } }
+    sudokuProgress: {},      // { childId: { difficultyId: { 'YYYY-MM-DD': { grid, completed } } } }
     wheelSpins: {},         // { childId: { week: 'YYYY-Www', prize: { label, points } } }
     pets: {},                // { childId: { species, totalFeeds, lastFedAt } }
     teamGoalEnabled: false,
@@ -576,6 +712,7 @@ function migrateData(data){
   if (!Array.isArray(data.pendingRequests)) data.pendingRequests = [];
   if (!data.logicProgress || typeof data.logicProgress !== 'object') data.logicProgress = {};
   if (!data.wheelSpins || typeof data.wheelSpins !== 'object') data.wheelSpins = {};
+  if (!data.sudokuProgress || typeof data.sudokuProgress !== 'object') data.sudokuProgress = {};
   if (!data.pets || typeof data.pets !== 'object') data.pets = {};
   Object.values(data.pets).forEach(pet => {
     if (typeof pet.happiness !== 'number') pet.happiness = 100;
@@ -1139,6 +1276,7 @@ function render(){
 
   const tabContent = mainTab === 'jeux' ? `
       ${renderLogicGames()}
+      ${renderSudoku()}
       ${renderBadges()}
       ${renderWheel()}
       ${renderLootChest()}
@@ -1166,6 +1304,7 @@ function render(){
   bindBottomNav();
   if (mainTab === 'jeux'){
     bindLogicGames();
+    bindSudoku();
     bindBadges();
     bindWheel();
     bindLootChest();
@@ -1485,6 +1624,107 @@ function openLogicGamesMenu(){
 function bindLogicGames(){
   const openBtn = document.getElementById('btn-open-logic-menu');
   if (openBtn) openBtn.onclick = () => openLogicGamesMenu();
+}
+
+function renderSudoku(){
+  const child = getChild(activeChildId);
+  const difficultyId = childLogicDifficulty(child.id, 'sudoku');
+  const sudokuState = getSudokuState(child.id, difficultyId);
+  const points = SUDOKU_DIFFICULTY_CONFIG[difficultyId].points;
+  return `
+  <section class="logic-panel logic-teaser" aria-labelledby="sudoku-title">
+    <div>
+      <h2 id="sudoku-title">🔢 Sudoku du jour</h2>
+      <p>${sudokuState.completed ? "Terminé aujourd'hui — reviens demain pour un nouveau sudoku !" : `${difficultyConfig(difficultyId).label} · +${points} pts en le terminant`}</p>
+      <div class="difficulty-picker">
+        ${DIFFICULTIES.map(d => `<button class="difficulty-pill ${d.id === difficultyId ? 'active' : ''}" data-sudoku-difficulty="${d.id}">${d.label}</button>`).join('')}
+      </div>
+    </div>
+    <button class="btn btn-gold" id="btn-open-sudoku">${sudokuState.completed ? 'Revoir' : 'Jouer'}</button>
+  </section>`;
+}
+
+function bindSudoku(){
+  document.querySelectorAll('[data-sudoku-difficulty]').forEach(btn => {
+    btn.onclick = () => {
+      const child = getChild(activeChildId);
+      setChildLogicDifficulty(child.id, 'sudoku', btn.dataset.sudokuDifficulty);
+      saveData();
+      render();
+    };
+  });
+  const openBtn = document.getElementById('btn-open-sudoku');
+  if (openBtn) openBtn.onclick = () => openSudokuModal();
+}
+
+let sudokuSelectedCell = null; // [row, col] actuellement sélectionnée dans la grille ouverte
+
+function openSudokuModal(){
+  sudokuSelectedCell = null;
+  renderSudokuModal();
+}
+
+function renderSudokuModal(){
+  const child = getChild(activeChildId);
+  const difficultyId = childLogicDifficulty(child.id, 'sudoku');
+  const { puzzle } = getSudokuPuzzle(todayStr(), difficultyId);
+  const sudokuState = getSudokuState(child.id, difficultyId);
+  const grid = sudokuState.grid;
+
+  const cellsHtml = grid.map((row, r) => row.map((val, c) => {
+    const isClue = puzzle[r][c] !== 0;
+    const conflict = sudokuHasConflict(grid, r, c);
+    const selected = sudokuSelectedCell && sudokuSelectedCell[0] === r && sudokuSelectedCell[1] === c;
+    const classes = ['sudoku-cell'];
+    if (isClue) classes.push('clue');
+    if (conflict) classes.push('conflict');
+    if (selected) classes.push('selected');
+    if (c % 3 === 0) classes.push('border-left');
+    if (r % 3 === 0) classes.push('border-top');
+    return `<button type="button" class="${classes.join(' ')}" ${isClue || sudokuState.completed ? 'disabled' : `data-cell="${r},${c}"`}>${val || ''}</button>`;
+  }).join('')).join('');
+
+  openModal(`
+    <h3 class="modal-title">🔢 Sudoku du jour</h3>
+    <p class="modal-sub">${escapeHtml(child.name)} · ${difficultyConfig(difficultyId).label}</p>
+    ${sudokuState.completed ? '<div class="logic-complete">🏆 Sudoku terminé aujourd\'hui !</div>' : ''}
+    <div class="sudoku-grid">${cellsHtml}</div>
+    ${!sudokuState.completed ? `
+    <div class="sudoku-palette">
+      ${[1,2,3,4,5,6,7,8,9].map(n => `<button type="button" class="sudoku-num" data-num="${n}">${n}</button>`).join('')}
+      <button type="button" class="sudoku-num sudoku-erase" data-num="0">✕</button>
+    </div>` : ''}
+    <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-sudoku">Fermer</button></div>
+  `, { wide: true });
+
+  document.getElementById('btn-close-sudoku').onclick = closeModal;
+  document.querySelectorAll('[data-cell]').forEach(btn => {
+    btn.onclick = () => {
+      const [r, c] = btn.dataset.cell.split(',').map(Number);
+      sudokuSelectedCell = [r, c];
+      renderSudokuModal();
+    };
+  });
+  document.querySelectorAll('[data-num]').forEach(btn => {
+    btn.onclick = () => {
+      if (!sudokuSelectedCell) return;
+      const [r, c] = sudokuSelectedCell;
+      const num = parseInt(btn.dataset.num, 10);
+      grid[r][c] = num;
+      saveSudokuState(child.id, difficultyId, { grid, completed: false });
+      saveData();
+      if (sudokuIsComplete(grid)){
+        const points = SUDOKU_DIFFICULTY_CONFIG[difficultyId].points;
+        addPoints(child.id, points);
+        saveSudokuState(child.id, difficultyId, { grid, completed: true });
+        saveData();
+        launchConfetti();
+        showToast(`Sudoku terminé ! +${points} pts`, '🏆');
+        render();
+      }
+      renderSudokuModal();
+    };
+  });
 }
 
 function renderBadges(){
