@@ -630,6 +630,100 @@ function addPoints(childId, delta){
   state.points[childId] = Math.max(0, getPoints(childId) + delta);
 }
 
+/* Points gagnés à vie (jamais décroissant), reconstitués à partir du solde actuel + tout ce
+   qui a été dépensé en récompenses ou retiré en pénalité. Sert de base au niveau : dépenser
+   ou se faire retirer des points ne fait donc jamais redescendre de niveau. */
+function lifetimePoints(childId){
+  const spentOrRemoved = state.redemptions
+    .filter(r => r.childId === childId)
+    .reduce((sum, r) => sum + (r.pointsSpent || 0) + (r.pointsRemoved || 0), 0);
+  return getPoints(childId) + spentOrRemoved;
+}
+
+const XP_PER_LEVEL = 50;
+const LEVEL_TITLES = ['Apprenti', 'Aide précieux', 'Champion du quotidien', 'Héros de la maison', 'Champion de la maison', 'Légende du Royaume'];
+
+function levelInfo(points){
+  const level = 1 + Math.floor(points / XP_PER_LEVEL);
+  const into = points % XP_PER_LEVEL;
+  return { level, into, pct: Math.round((into / XP_PER_LEVEL) * 100), title: LEVEL_TITLES[Math.min(level - 1, LEVEL_TITLES.length - 1)] };
+}
+
+/* Nombre de jours consécutifs (jusqu'à hier ou aujourd'hui) où toutes les missions du jour
+   ont été faites. */
+function computeStreak(childId){
+  let streak = 0;
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+  for (let i = 0; i < 365; i++){
+    const dateStr = cursor.getFullYear() + '-' + String(cursor.getMonth()+1).padStart(2,'0') + '-' + String(cursor.getDate()).padStart(2,'0');
+    const dayTasks = state.tasks.filter(t => !t.schoolDaysOnly || isSchoolDay(cursor));
+    if (dayTasks.length > 0){
+      const completed = state.completions[dateStr]?.[childId] || [];
+      const allDone = dayTasks.every(t => completed.includes(t.id));
+      if (!allDone){
+        if (dateStr === todayStr()) { cursor.setDate(cursor.getDate() - 1); continue; }
+        break;
+      }
+      streak++;
+    }
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+/* Nombre de missions d'un type donné (ou tous types) accomplies à vie par un enfant,
+   d'après l'historique des complétions journalières. */
+function lifetimeMissionsCount(childId, type){
+  let count = 0;
+  Object.values(state.completions).forEach(byChild => {
+    const doneIds = byChild[childId];
+    if (!doneIds) return;
+    doneIds.forEach(taskId => {
+      if (!type) { count++; return; }
+      const task = state.tasks.find(t => t.id === taskId);
+      if (task && task.type === type) count++;
+    });
+  });
+  return count;
+}
+
+const BADGES = [
+  { id: 'first_mission', icon: '🥇', label: 'Première mission', check: cid => lifetimeMissionsCount(cid) >= 1 },
+  { id: 'streak_7', icon: '🔥', label: '7 jours d\'affilée', check: cid => computeStreak(cid) >= 7 },
+  { id: 'streak_30', icon: '🌟', label: '30 jours d\'affilée', check: cid => computeStreak(cid) >= 30 },
+  { id: 'menage_50', icon: '🧹', label: '50 missions ménage', check: cid => lifetimeMissionsCount(cid, 'menage') >= 50 },
+  { id: 'devoir_30', icon: '📚', label: '30 missions devoirs', check: cid => lifetimeMissionsCount(cid, 'devoir') >= 30 },
+  { id: 'logic_50', icon: '🧠', label: '50 défis de logique', check: cid => logicTotalSolved(cid) >= 50 },
+  { id: 'first_reward', icon: '🎁', label: 'Première récompense', check: cid => state.redemptions.some(r => r.childId === cid && r.pointsSpent > 0) },
+  { id: 'level_5', icon: '👑', label: 'Niveau 5 atteint', check: cid => levelInfo(lifetimePoints(cid)).level >= 5 },
+];
+
+/* Points gagnés par semaine sur les `weeks` dernières semaines (la plus récente en dernier),
+   recalculés à partir de l'historique des complétions et des points actuels des missions. */
+function weeklyPointsSeries(childId, weeks = 8){
+  const days = weeks * 7;
+  const daily = [];
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+  cursor.setDate(cursor.getDate() - (days - 1));
+  for (let i = 0; i < days; i++){
+    const dateStr = cursor.getFullYear() + '-' + String(cursor.getMonth()+1).padStart(2,'0') + '-' + String(cursor.getDate()).padStart(2,'0');
+    const doneIds = state.completions[dateStr]?.[childId] || [];
+    const pts = doneIds.reduce((sum, taskId) => {
+      const task = state.tasks.find(t => t.id === taskId);
+      return sum + (task ? task.points : 0);
+    }, 0);
+    daily.push(pts);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  const weekly = [];
+  for (let w = 0; w < weeks; w++){
+    weekly.push(daily.slice(w*7, w*7+7).reduce((s,v)=>s+v,0));
+  }
+  return weekly;
+}
+
 function tasksForChildToday(){
   const schoolDay = isSchoolDay();
   return state.tasks.filter(t => !t.schoolDaysOnly || schoolDay);
@@ -691,6 +785,7 @@ function render(){
     ${renderBackupReminder()}
     ${renderChildRow()}
     ${renderLogicGames()}
+    ${renderBadges()}
     ${renderBoard()}
     ${renderCalendar()}
     ${renderHistory()}
@@ -701,6 +796,7 @@ function render(){
   bindChildRow();
   bindCalendar();
   bindLogicGames();
+  bindBadges();
   bindBoard();
 }
 
@@ -807,7 +903,7 @@ function openJoinFamilyModal(){
 
 /* ---------------------------- rendu : onglets enfants ---------------------------- */
 
-function xpRingSvg(percent, avatar){
+function xpRingSvg(percent, avatar, level){
   const r = 22, c = 2 * Math.PI * r;
   const offset = c - (percent/100) * c;
   return `
@@ -817,6 +913,7 @@ function xpRingSvg(percent, avatar){
       <circle class="xp-ring-fg" cx="26" cy="26" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="${offset}"></circle>
     </svg>
     <div class="xp-avatar">${escapeHtml(avatar)}</div>
+    <div class="lvl-badge">${escapeHtml(level)}</div>
   </div>`;
 }
 
@@ -824,12 +921,15 @@ function renderChildRow(){
   const items = state.children.map(c => {
     const pct = todayProgress(c.id);
     const euros = totalEuros(c.id);
+    const li = levelInfo(lifetimePoints(c.id));
+    const streak = computeStreak(c.id);
     return `
     <button class="child-tab ${c.id === activeChildId ? 'active' : ''}" data-child="${c.id}">
-      ${xpRingSvg(pct, c.avatar)}
+      ${xpRingSvg(pct, c.avatar, li.level)}
       <div class="child-meta">
-        <span class="child-name">${escapeHtml(c.name)}</span>
-        <span class="child-points">★ ${escapeHtml(getPoints(c.id))} pts</span>
+        <span class="child-name">${escapeHtml(c.name)}${streak > 0 ? ` <span class="streak-flame" title="${streak} jours d'affilée">🔥${escapeHtml(streak)}</span>` : ''}</span>
+        <span class="child-points">★ ${escapeHtml(getPoints(c.id))} pts · Niv. ${li.level} ${escapeHtml(li.title)}</span>
+        <div class="xp-bar-mini" title="${li.into} / ${XP_PER_LEVEL} pts vers le niveau ${li.level + 1}"><div class="xp-bar-mini-fill" style="width:${li.pct}%;"></div></div>
         ${euros > 0 ? `<span class="child-euros">💶 ${escapeHtml(euros)} € récoltés</span>` : ''}
       </div>
     </button>`;
@@ -935,6 +1035,44 @@ function openLogicGamesMenu(){
 function bindLogicGames(){
   const openBtn = document.getElementById('btn-open-logic-menu');
   if (openBtn) openBtn.onclick = () => openLogicGamesMenu();
+}
+
+function renderBadges(){
+  const child = getChild(activeChildId);
+  const unlocked = BADGES.filter(b => b.check(child.id)).length;
+  return `
+  <section class="logic-panel logic-teaser" aria-labelledby="badges-title">
+    <div>
+      <h2 id="badges-title">🏅 Trophées</h2>
+      <p>${unlocked} / ${BADGES.length} trophées débloqués</p>
+    </div>
+    <button class="btn btn-gold" id="btn-open-badges">Voir</button>
+  </section>`;
+}
+
+function bindBadges(){
+  const openBtn = document.getElementById('btn-open-badges');
+  if (openBtn) openBtn.onclick = () => openBadgesModal();
+}
+
+function openBadgesModal(){
+  const child = getChild(activeChildId);
+  if (!child) return;
+  const items = BADGES.map(b => {
+    const unlocked = b.check(child.id);
+    return `
+    <div class="badge-item ${unlocked ? 'unlocked' : 'locked'}">
+      <div class="badge-icon">${unlocked ? b.icon : '🔒'}</div>
+      <div class="badge-label">${escapeHtml(b.label)}</div>
+    </div>`;
+  }).join('');
+  openModal(`
+    <h3 class="modal-title">🏅 Trophées</h3>
+    <p class="modal-sub">${escapeHtml(child.name)}</p>
+    <div class="badge-grid">${items}</div>
+    <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-badges">Fermer</button></div>
+  `, { wide: true });
+  document.getElementById('btn-close-badges').onclick = closeModal;
 }
 
 function openLogicGame(gameId){
@@ -1554,6 +1692,7 @@ function renderSettingsModal(){
       <button class="settings-tab ${settingsTab==='taches'?'active':''}" data-tab="taches">🗒️ Missions</button>
       <button class="settings-tab ${settingsTab==='recompenses'?'active':''}" data-tab="recompenses">🎁 Récompenses</button>
       <button class="settings-tab ${settingsTab==='apparence'?'active':''}" data-tab="apparence">🎨 Apparence</button>
+      <button class="settings-tab ${settingsTab==='stats'?'active':''}" data-tab="stats">📊 Stats</button>
       <button class="settings-tab ${settingsTab==='securite'?'active':''}" data-tab="securite">🔐 Sécurité</button>
     </div>
     <div id="settings-content"></div>
@@ -1574,6 +1713,7 @@ function renderSettingsContent(){
   else if (settingsTab === 'taches') container.innerHTML = tasksSettingsHtml();
   else if (settingsTab === 'recompenses') container.innerHTML = rewardsSettingsHtml();
   else if (settingsTab === 'apparence') container.innerHTML = appearanceSettingsHtml();
+  else if (settingsTab === 'stats') container.innerHTML = statsSettingsHtml();
   else container.innerHTML = securitySettingsHtml();
   bindSettingsContent();
 }
@@ -1643,6 +1783,36 @@ function appearanceSettingsHtml(){
           <span class="theme-swatch ${id}"></span><span>${theme.icon} ${theme.label}</span>${state.theme === id ? '<strong>✓</strong>' : ''}
         </button>`).join('')}
     </div>`;
+}
+
+function statsSettingsHtml(){
+  if (!state.children.length) return '<p class="help-text">Aucun enfant pour le moment.</p>';
+  return state.children.map(c => {
+    const streak = computeStreak(c.id);
+    const li = levelInfo(lifetimePoints(c.id));
+    const weekly = weeklyPointsSeries(c.id, 8);
+    const max = Math.max(1, ...weekly);
+    const bars = weekly.map((v, i) => `<div class="stat-bar" style="height:${Math.max(3, Math.round((v/max)*100))}%;" title="${i === weekly.length-1 ? 'Cette semaine' : 'Il y a ' + (weekly.length-1-i) + ' semaine(s)'} : ${v} pts"></div>`).join('');
+    const badgesUnlocked = BADGES.filter(b => b.check(c.id)).length;
+    return `
+    <div class="stat-card">
+      <div class="stat-head">
+        <span style="font-size:26px;">${escapeHtml(c.avatar)}</span>
+        <div class="grow">
+          <div class="rname">${escapeHtml(c.name)}</div>
+          <div class="rmeta">Niveau ${li.level} · ${escapeHtml(li.title)}${streak > 0 ? ` · 🔥 ${streak} j.` : ''}</div>
+        </div>
+      </div>
+      <div class="stat-nums">
+        <div><strong>${lifetimeMissionsCount(c.id, 'menage')}</strong><span>ménage</span></div>
+        <div><strong>${lifetimeMissionsCount(c.id, 'devoir')}</strong><span>devoirs</span></div>
+        <div><strong>${logicTotalSolved(c.id)}</strong><span>défis</span></div>
+        <div><strong>${badgesUnlocked}/${BADGES.length}</strong><span>trophées</span></div>
+      </div>
+      <div class="rmeta" style="margin:12px 0 4px;">Points gagnés par semaine (8 dernières semaines)</div>
+      <div class="stat-chart">${bars}</div>
+    </div>`;
+  }).join('');
 }
 
 function securitySettingsHtml(){
