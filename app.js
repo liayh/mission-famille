@@ -1,13 +1,15 @@
 /* ==========================================================================
    Mission Famille — logique de l'application
-   Stockage: localStorage par défaut (100% local, aucune donnée envoyée).
-   Synchronisation cloud optionnelle (Firebase) : activable dans Réglages →
-   Sécurité, protège l'accès par un code famille à usage unique, voir la
-   section "synchronisation cloud" plus bas.
+   Stockage: localStorage par défaut (100% local, aucune donnée envoyée tant
+   que la synchronisation cloud n'est pas activée dans Réglages → Sécurité).
+   Synchronisation cloud optionnelle (Firebase) : protège l'accès par un code
+   famille (voir section "synchronisation cloud" plus bas + App Check pour
+   bloquer les requêtes hors application).
    Le code PIN parent est haché en SHA-256 avant stockage.
    ========================================================================== */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app-check.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
@@ -332,6 +334,10 @@ const firebaseConfig = {
   messagingSenderId: "1024156538990",
   appId: "1:1024156538990:web:611026df02fa1325bf2e7f",
 };
+// Clé de site reCAPTCHA v3 (publique, comme apiKey ci-dessus) : sert à App Check pour
+// vérifier que les requêtes Firestore proviennent bien de cette application (bloque les
+// scripts/robots), pas à protéger un secret.
+const RECAPTCHA_SITE_KEY = "6LcCJJEtAAAAANBwVQeBHj4w92_-TXTe9n1BJijz";
 const FAMILY_CODE_KEY = 'missionFamilleFamilyCode';
 const FAMILY_CODE_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sans 0/O/1/I/l (ambigus)
 
@@ -350,16 +356,28 @@ function generateFamilyCode(){
   return Array.from(bytes, b => FAMILY_CODE_CHARSET[b % FAMILY_CODE_CHARSET.length]).join('');
 }
 
-function getFirestoreDb(){
+/* Crée l'app Firebase (une seule fois) et initialise App Check juste après, avant tout
+   appel Auth/Firestore — sinon les tout premiers appels ne seraient pas protégés. */
+function ensureFirebaseApp(){
   if (!firebaseApp){
     firebaseApp = initializeApp(firebaseConfig);
-    firestoreDb = getFirestore(firebaseApp);
+    initializeAppCheck(firebaseApp, {
+      provider: new ReCaptchaV3Provider(RECAPTCHA_SITE_KEY),
+      isTokenAutoRefreshEnabled: true,
+    });
+  }
+  return firebaseApp;
+}
+
+function getFirestoreDb(){
+  if (!firestoreDb){
+    firestoreDb = getFirestore(ensureFirebaseApp());
   }
   return firestoreDb;
 }
 
 function ensureSignedIn(){
-  const auth = getAuth(firebaseApp || initializeApp(firebaseConfig));
+  const auth = getAuth(ensureFirebaseApp());
   if (auth.currentUser) return Promise.resolve(auth.currentUser);
   return signInAnonymously(auth).then(() => new Promise((resolve, reject) => {
     const unsub = onAuthStateChanged(auth, user => {
