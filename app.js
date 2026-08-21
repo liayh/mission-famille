@@ -24,7 +24,6 @@ const UNLOCKABLE_AVATARS = [
   { emoji: '🌟', minLevel: 10, label: 'Étoile' },
 ];
 const REWARD_ICONS = ['📺','🎮','🎬','🍽️','🍦','🎳','🚲','🏊','🎨','⚽'];
-const WEEKDAYS_SHORT = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
 const THEMES = {
   clair: { label: 'Clair', icon: '☀️' },
   ocean: { label: 'Océan', icon: '🌊' },
@@ -1932,29 +1931,6 @@ function confirmMonthlyRedeem(month){
         saveData();
       }, `Récompense de ${amount} € validée pour ${child.name}`, '💶');
       launchConfetti();
-      render();
-    }
-  });
-}
-
-function confirmRedeem(rewardId){
-  const child = getChild(activeChildId);
-  const reward = state.rewards.find(r => r.id === rewardId);
-  if (!child || !reward) return;
-  const cost = effectiveRewardCost(child, reward);
-  openConfirmModal({
-    title: 'Confirmer la récompense',
-    body: `Valider que <strong>${escapeHtml(child.name)}</strong> utilise <strong>${escapeHtml(reward.icon)} ${escapeHtml(reward.label)}</strong> pour <strong>${escapeHtml(cost)} pts</strong> ?`,
-    confirmLabel: 'Valider',
-    onConfirm: () => {
-      addPoints(child.id, -cost);
-      state.redemptions.unshift({
-        id: uid('red'), childId: child.id, rewardId: reward.id,
-        rewardLabel: reward.label, rewardIcon: reward.icon,
-        date: new Date().toISOString(), pointsSpent: cost,
-      });
-      saveData();
-      showToast(`${reward.label} débloqué pour ${child.name} !`, reward.icon);
       render();
     }
   });

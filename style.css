@@ -25,7 +25,6 @@
 
   --radius-lg:20px;
   --radius-md:14px;
-  --radius-sm:8px;
   --shadow-card:0 6px 0 rgba(12,33,31,0.35), 0 12px 24px rgba(12,33,31,0.25);
   --shadow-card-sm:0 3px 0 rgba(12,33,31,0.3), 0 6px 14px rgba(12,33,31,0.2);
 }
@@ -93,7 +92,7 @@ body[data-theme="royaume"]{
   --theme-muted:#8a5330;
   --theme-accent:#d98a0e;
   --rk-sky-top:#0c2a4a; --rk-sky-mid:#0f4560; --rk-sky-bottom:#0e5c6e;
-  --rk-wood:#8a5330; --rk-wood-light:#c4854a; --rk-wood-dark:#4a2a15; --rk-wood-edge:#2e1a0d;
+  --rk-wood:#8a5330; --rk-wood-dark:#4a2a15; --rk-wood-edge:#2e1a0d;
   --rk-paper:#f6e7bf; --rk-paper-edge:#d8b876;
   --rk-gold:#ffcc3d; --rk-gold-deep:#d98a0e; --rk-gold-shadow:#8a5306;
   --rk-green:#59c24a; --rk-green-deep:#2e8b2a; --rk-green-shadow:#1b5c18;
@@ -200,7 +199,7 @@ body[data-theme="royaume"] .checkbox{border-color:var(--rk-wood);}
 body[data-theme="royaume"] .task-item.done .checkbox{background:var(--rk-green); border-color:var(--rk-green-deep);}
 body[data-theme="royaume"] .progress-fill{background:linear-gradient(90deg, var(--rk-gold-deep), var(--rk-gold));}
 
-body[data-theme="royaume"] .btn3d, body[data-theme="royaume"] .btn{
+body[data-theme="royaume"] .btn{
   border:none; text-shadow:0 2px 0 rgba(0,0,0,0.35); transition:transform .07s ease, box-shadow .07s ease;
 }
 body[data-theme="royaume"] .btn-gold, body[data-theme="royaume"] .btn-primary{
@@ -399,7 +398,6 @@ body[data-theme]:not([data-theme="royaume"]) .footer-note{color:var(--theme-mute
 .logic-teaser{display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;}
 .logic-teaser h2{font-size:18px; color:var(--theme-text, var(--ink-900));}
 .logic-teaser p{margin:3px 0 0; color:var(--theme-muted, var(--ink-700)); font-size:12px;}
-.logic-score{font-family:var(--font-mono); color:var(--theme-accent, var(--gold-dim)); font-size:11px;}
 .logic-question{background:var(--theme-surface-strong, #fff8e6); border:2px solid var(--theme-border, var(--paper-dim)); border-radius:12px; padding:22px 16px; text-align:center; font-size:18px; font-weight:700; color:var(--theme-text, var(--ink-900));}
 .logic-options{display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-top:14px;}
 .logic-option{border:2px solid var(--paper-dim); border-radius:10px; background:#fff; color:var(--ink-900); padding:12px 8px; cursor:pointer; font-weight:700; font-family:var(--font-body);}
@@ -687,7 +685,5 @@ body[data-theme]:not([data-theme="royaume"]) .footer-note{color:var(--theme-mute
   .theme-picker{grid-template-columns:1fr;}
   .request-row{align-items:flex-start; flex-direction:column;}
   .request-row .row-actions{width:100%; justify-content:flex-end;}
-  .logic-head{align-items:flex-start; flex-direction:column;}
-  .logic-games{grid-template-columns:1fr 1fr;}
   .logic-options{grid-template-columns:1fr;}
 }
