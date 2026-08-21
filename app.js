@@ -31,38 +31,110 @@ const THEMES = {
   royaume: { label: 'Royaume', icon: '🏰' },
 };
 
-const LOGIC_CHALLENGE_POINTS = 1; // pts gagnés par bonne réponse à un défi de logique
+// 3 niveaux de difficulté par jeu de logique : plus de points et plus de choix de réponse
+// (donc moins facile à deviner au hasard) sur les niveaux plus difficiles.
+const DIFFICULTIES = [
+  { id: 'facile', label: 'Facile', points: 1, optionCount: 3 },
+  { id: 'moyen', label: 'Moyen', points: 2, optionCount: 4 },
+  { id: 'difficile', label: 'Difficile', points: 3, optionCount: 5 },
+];
+const LOGIC_DAILY_COUNT = 6; // défis proposés chaque jour par jeu (au lieu de 10)
+
+function difficultyConfig(difficultyId){
+  return DIFFICULTIES.find(d => d.id === difficultyId) || DIFFICULTIES[0];
+}
+
+// Banque de mots "neutres" pour compléter les choix de réponse des jeux de mots/énigmes
+// quand il faut plus d'options que de distracteurs déjà choisis à la main.
+const GENERIC_DECOY_WORDS = [
+  'pomme','chaise','stylo','nuage','vélo','table','ballon','lampe','crayon','arbre',
+  'chat','chien','maison','fenêtre','porte','livre','montagne','rivière','étoile','soleil',
+  'lune','fleur','oiseau','poisson','voiture','bateau','avion','chapeau','montre','bouteille',
+  'gâteau','fromage','tomate','carotte','valise','tapis','miroir','coussin','parapluie','panier',
+];
+
+/* Complète une liste d'options jusqu'à targetCount, en ajoutant des distracteurs numériques
+   proches de la réponse (numeric=true) ou des mots neutres de GENERIC_DECOY_WORDS, de façon
+   déterministe (même index = mêmes distracteurs ajoutés à chaque appel). */
+function extendOptions(baseOptions, answer, targetCount, index, numeric){
+  const curated = [...new Set(baseOptions.filter(o => o !== answer))];
+  let needed = targetCount - 1 - curated.length;
+  if (numeric){
+    const answerNum = Number(answer);
+    let i = 0;
+    while (needed > 0 && i < 40){
+      let delta = ((index + i) % 7) + 1;
+      if ((index + i) % 2 === 0) delta = -delta;
+      const candidate = String(answerNum + delta);
+      if (candidate !== answer && !curated.includes(candidate)){ curated.push(candidate); needed--; }
+      i++;
+    }
+  } else {
+    const bank = GENERIC_DECOY_WORDS.filter(w => w !== answer && !curated.includes(w));
+    for (let i = 0; i < needed && bank.length; i++){
+      curated.push(bank[(index + i * 7) % bank.length]);
+    }
+  }
+  return [answer, ...curated.slice(0, targetCount - 1)];
+}
+
+function buildSeriesPool(difficultyId){
+  const optionCount = difficultyConfig(difficultyId).optionCount;
+  const cfg = { facile: { startBase: 2, stepBase: 2, stepMod: 3 }, moyen: { startBase: 10, stepBase: 4, stepMod: 6 }, difficile: { startBase: 20, stepBase: 6, stepMod: 9 } }[difficultyId];
+  return Array.from({ length: 60 }, (_, index) => {
+    const start = index + cfg.startBase;
+    const step = (index % cfg.stepMod) + cfg.stepBase;
+    const answer = start + step * 3;
+    const options = extendOptions([String(answer), String(answer - 1), String(answer + 2)], String(answer), optionCount, index, true);
+    return { text: `${start}, ${start + step}, ${start + step * 2}, ?`, answer: String(answer), options };
+  });
+}
+
+function buildCalculPool(difficultyId){
+  const optionCount = difficultyConfig(difficultyId).optionCount;
+  const cfg = { facile: { aBase: 2, aMod: 9, bBase: 2, bMod: 4 }, moyen: { aBase: 11, aMod: 20, bBase: 3, bMod: 7 }, difficile: { aBase: 12, aMod: 18, bBase: 11, bMod: 12 } }[difficultyId];
+  return Array.from({ length: 60 }, (_, index) => {
+    const a = cfg.aBase + (index % cfg.aMod);
+    const b = cfg.bBase + (index % cfg.bMod);
+    const answer = a * b;
+    const options = extendOptions([String(answer), String(answer + b), String(answer - a)], String(answer), optionCount, index, true);
+    return { text: `${a} × ${b} = ?`, answer: String(answer), options };
+  });
+}
+
+function buildIntrusPool(difficultyId){
+  const optionCount = difficultyConfig(difficultyId).optionCount;
+  const cfg = { facile: { base: 3, mult: [2, 4, 6] }, moyen: { base: 8, mult: [3, 6, 9] }, difficile: { base: 15, mult: [4, 7, 11] } }[difficultyId];
+  return Array.from({ length: 60 }, (_, index) => {
+    const answer = index + cfg.base;
+    const values = [answer * cfg.mult[0], answer * cfg.mult[1], answer * cfg.mult[2], answer * cfg.mult[2] + 1];
+    const options = extendOptions([String(values[3]), String(values[0]), String(values[1])], String(values[3]), optionCount, index, true);
+    return { text: `Quel nombre est différent : ${values.join(' - ')} ?`, answer: String(values[3]), options };
+  });
+}
+
+function buildWordPool(entries, difficultyId){
+  const optionCount = difficultyConfig(difficultyId).optionCount;
+  return entries.map(([text, answer, options], index) => ({ text, answer, options: extendOptions(options, answer, optionCount, index, false) }));
+}
 
 const LOGIC_GAMES = [
   {
     id: 'series', title: 'Les suites malignes', icon: '🔢', description: 'Trouve le nombre qui vient ensuite.',
-    questions: Array.from({ length: 60 }, (_, index) => {
-      const start = index + 2;
-      const step = (index % 3) + 2;
-      const answer = start + step * 3;
-      return { text: `${start}, ${start + step}, ${start + step * 2}, ?`, answer: String(answer), options: [String(answer), String(answer - 1), String(answer + 2)] };
-    }),
+    questionsByDifficulty: { facile: buildSeriesPool('facile'), moyen: buildSeriesPool('moyen'), difficile: buildSeriesPool('difficile') },
   },
   {
     id: 'calcul', title: 'Calcul express', icon: '🧮', description: 'Résous de petits calculs de tête.',
-    questions: Array.from({ length: 60 }, (_, index) => {
-      const a = index + 4;
-      const b = (index % 4) + 2;
-      const answer = a * b;
-      return { text: `${a} × ${b} = ?`, answer: String(answer), options: [String(answer), String(answer + b), String(answer - a)] };
-    }),
+    questionsByDifficulty: { facile: buildCalculPool('facile'), moyen: buildCalculPool('moyen'), difficile: buildCalculPool('difficile') },
   },
   {
     id: 'intrus', title: 'Trouve l’intrus', icon: '🕵️', description: 'Repère le nombre qui ne suit pas la règle.',
-    questions: Array.from({ length: 60 }, (_, index) => {
-      const answer = index + 3;
-      const values = [answer * 2, answer * 4, answer * 6, answer * 6 + 1];
-      return { text: `Quel nombre est différent : ${values.join(' - ')} ?`, answer: String(values[3]), options: [String(values[3]), String(values[0]), String(values[1])] };
-    }),
+    questionsByDifficulty: { facile: buildIntrusPool('facile'), moyen: buildIntrusPool('moyen'), difficile: buildIntrusPool('difficile') },
   },
   {
     id: 'mots', title: 'Mots et catégories', icon: '🧩', description: 'Choisis le mot qui appartient à la catégorie.',
-    questions: [
+    questionsByDifficulty: (() => {
+      const entries = [
       ['Quel mot est un fruit ?', 'pomme', ['pomme', 'chaise', 'stylo']], ['Quel mot est un animal ?', 'lapin', ['lapin', 'nuage', 'fourchette']],
       ['Quel mot est une couleur ?', 'vert', ['vert', 'table', 'vélo']], ['Quel mot sert à écrire ?', 'crayon', ['crayon', 'ballon', 'pomme']],
       ['Quel mot est un moyen de transport ?', 'train', ['train', 'gâteau', 'oreiller']], ['Quel mot se mange ?', 'banane', ['banane', 'cahier', 'lampe']],
@@ -83,11 +155,14 @@ const LOGIC_GAMES = [
       ['Quel mot est une fête ?', 'Noël', ['Noël', 'table', 'pomme']], ['Quel mot est un chiffre en lettres ?', 'sept', ['sept', 'chaise', 'vélo']],
       ['Quel mot est un point cardinal ?', 'nord', ['nord', 'table', 'chat']], ['Quel mot est une saison ?', 'été', ['été', 'table', 'chat']],
       ['Quel mot est une forme géométrique ?', 'cercle', ['cercle', 'pomme', 'chaise']], ['Quel mot est un métal ?', 'fer', ['fer', 'pomme', 'chaise']],
-    ].map(([text, answer, options]) => ({ text, answer, options })),
+      ];
+      return { facile: buildWordPool(entries, 'facile'), moyen: buildWordPool(entries, 'moyen'), difficile: buildWordPool(entries, 'difficile') };
+    })(),
   },
   {
     id: 'enigmes', title: 'Petites énigmes', icon: '💡', description: 'Réfléchis bien avant de répondre.',
-    questions: [
+    questionsByDifficulty: (() => {
+      const entries = [
       ['J’ai 4 pattes mais je ne marche pas. Qui suis-je ?', 'table', ['table', 'chat', 'oiseau']], ['Je brille dans le ciel la nuit. Qui suis-je ?', 'lune', ['lune', 'chaise', 'pluie']],
       ['Je grandis quand on me nourrit et je meurs avec de l’eau. Qui suis-je ?', 'feu', ['feu', 'arbre', 'poisson']], ['J’ai des pages mais je ne suis pas un arbre. Qui suis-je ?', 'livre', ['livre', 'nuage', 'vélo']],
       ['Je tombe sans me faire mal et je mouille. Qui suis-je ?', 'pluie', ['pluie', 'pierre', 'soleil']], ['Je donne l’heure sans parler. Qui suis-je ?', 'horloge', ['horloge', 'fourchette', 'ballon']],
@@ -108,7 +183,9 @@ const LOGIC_GAMES = [
       ['Je brille de mille lumières la nuit mais je suis invisible le jour. Qui suis-je ?', 'étoile', ['étoile', 'lune', 'lampe']], ['J’ai quatre roues mais je ne suis pas une voiture, on me pousse dans les magasins. Qui suis-je ?', 'chariot', ['chariot', 'voiture', 'vélo']],
       ['Je suis rond, orange, et je pousse sur un arbre. Qui suis-je ?', 'orange', ['orange', 'citron', 'pomme']], ['On me met sur la tête pour se protéger du soleil. Qui suis-je ?', 'chapeau', ['chapeau', 'écharpe', 'gant']],
       ['Je suis fait de bois et je sers à écrire quand on me taille. Qui suis-je ?', 'crayon', ['crayon', 'stylo', 'gomme']], ['Je change de forme selon le vase qui me contient. Qui suis-je ?', 'eau', ['eau', 'air', 'sable']],
-    ].map(([text, answer, options]) => ({ text, answer, options })),
+      ];
+      return { facile: buildWordPool(entries, 'facile'), moyen: buildWordPool(entries, 'moyen'), difficile: buildWordPool(entries, 'difficile') };
+    })(),
   },
 ];
 
@@ -251,7 +328,7 @@ function dailySeed(str){
 
 /* Tire les 10 questions du jour pour un jeu donné, dans un ordre stable pour la journée
    (même famille ou pas), à partir d'un bassin de questions bien plus large. */
-function dailyQuestionIndices(gameId, poolSize, count = 10, dateStr = todayStr()){
+function dailyQuestionIndices(gameId, poolSize, count = LOGIC_DAILY_COUNT, dateStr = todayStr()){
   const rng = seededRandom(dailySeed(dateStr + ':' + gameId));
   const indices = Array.from({ length: poolSize }, (_, i) => i);
   for (let i = indices.length - 1; i > 0; i--){
@@ -261,8 +338,19 @@ function dailyQuestionIndices(gameId, poolSize, count = 10, dateStr = todayStr()
   return indices.slice(0, Math.min(count, poolSize));
 }
 
-function getTodaysQuestions(game){
-  return dailyQuestionIndices(game.id, game.questions.length).map(i => game.questions[i]);
+function childLogicDifficulty(childId, gameId){
+  return state.logicDifficulty?.[childId]?.[gameId] || 'facile';
+}
+
+function setChildLogicDifficulty(childId, gameId, difficultyId){
+  if (!state.logicDifficulty) state.logicDifficulty = {};
+  if (!state.logicDifficulty[childId]) state.logicDifficulty[childId] = {};
+  state.logicDifficulty[childId][gameId] = difficultyId;
+}
+
+function getTodaysQuestions(game, difficultyId){
+  const pool = game.questionsByDifficulty[difficultyId];
+  return dailyQuestionIndices(game.id + ':' + difficultyId, pool.length).map(i => pool[i]);
 }
 
 /* Petite pluie de confettis pour célébrer une réussite (mission validée, bonne réponse,
@@ -466,8 +554,9 @@ function defaultData(){
     completions: {},      // { 'YYYY-MM-DD': { childId: [taskId, ...] } }
     redemptions: [],      // { id, childId, rewardId, rewardLabel, date, pointsSpent }
     pendingRequests: [],  // { id, childId, rewardId, date }
-    logicProgress: {},     // { childId: { gameId: { 'YYYY-MM-DD': [questionIndex du jour, ...] } } }
+    logicProgress: {},     // { childId: { gameId: { difficultyId: { 'YYYY-MM-DD': [questionIndex du jour, ...] } } } }
     logicTotalSolved: {},  // { childId: nombre total de défis réussis (toutes dates confondues) }
+    logicDifficulty: {},    // { childId: { gameId: 'facile' | 'moyen' | 'difficile' } }
     wheelSpins: {},         // { childId: { week: 'YYYY-Www', prize: { label, points } } }
     pets: {},                // { childId: { species, totalFeeds, lastFedAt } }
     teamGoalEnabled: false,
@@ -605,6 +694,24 @@ function migrateData(data){
       });
     });
     data.logicDailyMigrated_v6 = true;
+    changed = true;
+  }
+  // Migration ponctuelle v7 : ajout de niveaux de difficulté (facile/moyen/difficile) par
+  // jeu de logique. L'ancien format ({ gameId: { date: [index, ...] } }) est converti en
+  // format par difficulté ({ gameId: { difficulté: { date: [index, ...] } } }) — les
+  // progrès déjà faits sont conservés sous "facile" (seul niveau qui existait avant).
+  if (!data.logicDifficultyMigrated_v7){
+    if (!data.logicDifficulty) data.logicDifficulty = {};
+    Object.entries(data.logicProgress || {}).forEach(([childId, byGame]) => {
+      Object.entries(byGame || {}).forEach(([gameId, byDateOrDifficulty]) => {
+        const keys = Object.keys(byDateOrDifficulty || {});
+        const looksLikeDates = keys.some(k => /^\d{4}-\d{2}-\d{2}$/.test(k));
+        if (looksLikeDates){
+          data.logicProgress[childId][gameId] = { facile: byDateOrDifficulty };
+        }
+      });
+    });
+    data.logicDifficultyMigrated_v7 = true;
     changed = true;
   }
   return changed;
@@ -1314,8 +1421,8 @@ function openDayDetailModal(dateKey){
   document.getElementById('btn-close-day-detail').onclick = closeModal;
 }
 
-function logicDoneCount(childId, gameId){
-  return state.logicProgress[childId]?.[gameId]?.[todayStr()]?.length || 0;
+function logicDoneCount(childId, gameId, difficultyId){
+  return state.logicProgress[childId]?.[gameId]?.[difficultyId]?.[todayStr()]?.length || 0;
 }
 
 function logicTotalSolved(childId){
@@ -1324,12 +1431,13 @@ function logicTotalSolved(childId){
 
 function renderLogicGames(){
   const child = getChild(activeChildId);
-  const totalToday = LOGIC_GAMES.reduce((sum, game) => sum + logicDoneCount(child.id, game.id), 0);
+  const totalToday = LOGIC_GAMES.reduce((sum, game) => sum + logicDoneCount(child.id, game.id, childLogicDifficulty(child.id, game.id)), 0);
+  const maxToday = LOGIC_GAMES.length * LOGIC_DAILY_COUNT;
   return `
   <section class="logic-panel logic-teaser" aria-labelledby="logic-title">
     <div>
       <h2 id="logic-title">🗺️ Défis du Royaume</h2>
-      <p>${totalToday} / 50 défis réussis aujourd'hui · ${logicTotalSolved(child.id)} au total · +${LOGIC_CHALLENGE_POINTS} pt par bonne réponse</p>
+      <p>${totalToday} / ${maxToday} défis réussis aujourd'hui · ${logicTotalSolved(child.id)} au total</p>
     </div>
     <button class="btn btn-gold" id="btn-open-logic-menu">Jouer</button>
   </section>`;
@@ -1338,19 +1446,37 @@ function renderLogicGames(){
 function openLogicGamesMenu(){
   const child = getChild(activeChildId);
   if (!child) return;
-  const rows = LOGIC_GAMES.map(game => `
-    <div class="list-row">
+  const rows = LOGIC_GAMES.map(game => {
+    const difficultyId = childLogicDifficulty(child.id, game.id);
+    const points = difficultyConfig(difficultyId).points;
+    return `
+    <div class="list-row logic-menu-row">
       <span style="font-size:22px;">${game.icon}</span>
-      <div class="grow"><div class="rname">${escapeHtml(game.title)}</div><div class="rmeta">${escapeHtml(game.description)}</div></div>
-      <button class="btn btn-sm btn-gold" data-logic-game="${game.id}">${logicDoneCount(child.id, game.id)} / 10</button>
-    </div>`).join('');
+      <div class="grow">
+        <div class="rname">${escapeHtml(game.title)}</div>
+        <div class="rmeta">${escapeHtml(game.description)} · +${points} pt${points > 1 ? 's' : ''}/bonne réponse</div>
+        <div class="difficulty-picker" data-difficulty-for="${game.id}">
+          ${DIFFICULTIES.map(d => `<button class="difficulty-pill ${d.id === difficultyId ? 'active' : ''}" data-difficulty="${d.id}" data-game="${game.id}">${d.label}</button>`).join('')}
+        </div>
+      </div>
+      <button class="btn btn-sm btn-gold" data-logic-game="${game.id}">${logicDoneCount(child.id, game.id, difficultyId)} / ${LOGIC_DAILY_COUNT}</button>
+    </div>`;
+  }).join('');
   openModal(`
     <h3 class="modal-title">🗺️ Défis du Royaume</h3>
-    <p class="modal-sub">${escapeHtml(child.name)} · choisis un jeu</p>
+    <p class="modal-sub">${escapeHtml(child.name)} · choisis un jeu et un niveau de difficulté</p>
     ${rows}
     <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-logic-menu">Fermer</button></div>
   `, { wide: true });
   document.getElementById('btn-close-logic-menu').onclick = closeModal;
+  document.querySelectorAll('[data-difficulty]').forEach(button => {
+    button.onclick = (e) => {
+      e.stopPropagation();
+      setChildLogicDifficulty(child.id, button.dataset.game, button.dataset.difficulty);
+      saveData();
+      openLogicGamesMenu();
+    };
+  });
   document.querySelectorAll('[data-logic-game]').forEach(button => {
     button.onclick = () => openLogicGame(button.dataset.logicGame);
   });
@@ -1659,13 +1785,15 @@ function openLogicGame(gameId){
 }
 
 /* Carte des défis du jour : un noeud par exercice (réussi / débloqué / verrouillé), dans
-   l'ordre. Les 10 questions changent chaque jour (tirées d'un bassin bien plus large). */
+   l'ordre. Les questions changent chaque jour (tirées d'un bassin bien plus large), pour
+   le niveau de difficulté choisi par l'enfant dans le menu des jeux. */
 function renderLogicNodeMap(gameId){
   const game = LOGIC_GAMES.find(item => item.id === gameId);
   const child = getChild(activeChildId);
   if (!game || !child) return;
-  const todaysQuestions = getTodaysQuestions(game);
-  const done = state.logicProgress[child.id]?.[game.id]?.[todayStr()] || [];
+  const difficultyId = childLogicDifficulty(child.id, game.id);
+  const todaysQuestions = getTodaysQuestions(game, difficultyId);
+  const done = state.logicProgress[child.id]?.[game.id]?.[difficultyId]?.[todayStr()] || [];
   const firstUnsolved = todaysQuestions.findIndex((_, index) => !done.includes(index));
   const allDone = firstUnsolved < 0;
   const nodesHtml = todaysQuestions.map((_, index) => {
@@ -1677,7 +1805,7 @@ function renderLogicNodeMap(gameId){
   }).join('');
   openModal(`
     <h3 class="modal-title">${game.icon} ${escapeHtml(game.title)}</h3>
-    <p class="modal-sub">${escapeHtml(child.name)} · ${done.length} / 10 réussis aujourd'hui</p>
+    <p class="modal-sub">${escapeHtml(child.name)} · ${difficultyConfig(difficultyId).label} · ${done.length} / ${LOGIC_DAILY_COUNT} réussis aujourd'hui</p>
     ${allDone ? '<div class="logic-complete">🏆 Défis du jour terminés ! Reviens demain pour de nouveaux défis.</div>' : ''}
     <div class="node-grid">${nodesHtml}</div>
     <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-logic">Fermer</button></div>
@@ -1695,14 +1823,16 @@ function openLogicQuestion(gameId, questionIndex){
   const game = LOGIC_GAMES.find(item => item.id === gameId);
   const child = getChild(activeChildId);
   if (!game || !child) return;
-  const todaysQuestions = getTodaysQuestions(game);
+  const difficultyId = childLogicDifficulty(child.id, game.id);
+  const points = difficultyConfig(difficultyId).points;
+  const todaysQuestions = getTodaysQuestions(game, difficultyId);
   let questionOptions = shuffled(todaysQuestions[questionIndex].options);
 
   const renderQuestion = (message = '') => {
     const question = todaysQuestions[questionIndex];
     openModal(`
       <h3 class="modal-title">${game.icon} ${escapeHtml(game.title)}</h3>
-      <p class="modal-sub">Défi ${questionIndex + 1} sur 10 · ${escapeHtml(child.name)}</p>
+      <p class="modal-sub">Défi ${questionIndex + 1} sur ${LOGIC_DAILY_COUNT} · ${difficultyConfig(difficultyId).label} · ${escapeHtml(child.name)}</p>
       <div class="logic-question">${escapeHtml(question.text)}</div>
       <div class="logic-options">${questionOptions.map(option => `<button class="logic-option" data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join('')}</div>
       <p class="logic-feedback">${escapeHtml(message)}</p>
@@ -1718,16 +1848,17 @@ function openLogicQuestion(gameId, questionIndex){
         const day = todayStr();
         if (!state.logicProgress[child.id]) state.logicProgress[child.id] = {};
         if (!state.logicProgress[child.id][game.id]) state.logicProgress[child.id][game.id] = {};
-        if (!state.logicProgress[child.id][game.id][day]) state.logicProgress[child.id][game.id][day] = [];
-        if (!state.logicProgress[child.id][game.id][day].includes(questionIndex)){
-          state.logicProgress[child.id][game.id][day].push(questionIndex);
+        if (!state.logicProgress[child.id][game.id][difficultyId]) state.logicProgress[child.id][game.id][difficultyId] = {};
+        if (!state.logicProgress[child.id][game.id][difficultyId][day]) state.logicProgress[child.id][game.id][difficultyId][day] = [];
+        if (!state.logicProgress[child.id][game.id][difficultyId][day].includes(questionIndex)){
+          state.logicProgress[child.id][game.id][difficultyId][day].push(questionIndex);
           if (!state.logicTotalSolved) state.logicTotalSolved = {};
           state.logicTotalSolved[child.id] = (state.logicTotalSolved[child.id] || 0) + 1;
-          addPoints(child.id, LOGIC_CHALLENGE_POINTS);
+          addPoints(child.id, points);
         }
         saveData();
         launchConfetti();
-        showToast(`Bravo ! +${LOGIC_CHALLENGE_POINTS} pt`, '🎉');
+        showToast(`Bravo ! +${points} pt${points > 1 ? 's' : ''}`, '🎉');
         render();
         renderLogicNodeMap(gameId);
       };
