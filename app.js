@@ -192,6 +192,7 @@ const LOGIC_GAMES = [
 let state = null;          // data loaded from localStorage
 let activeChildId = null;  // currently selected child tab
 let mainTab = 'accueil';   // onglet principal affiché : accueil / jeux / historique
+let activeGameView = null; // page de jeu plein écran ouverte : null / 'sudoku' / '2048'
 let failedPinAttempts = 0;
 let pinLockUntil = 0;
 let calendarMonth = monthKey();
@@ -1407,6 +1408,23 @@ function render(){
     activeChildId = state.children[0].id;
   }
 
+  // Sudoku et 2048 s'ouvrent en page à part entière (pas en fenêtre superposée) : plus de
+  // place, pas de zone de défilement séparée pouvant gêner le tactile, et ça passe par le
+  // même mécanisme d'affichage que le reste de l'appli.
+  if (activeGameView){
+    app.innerHTML = `
+      ${renderTopbar()}
+      ${renderChildRow()}
+      ${activeGameView === 'sudoku' ? renderSudokuPage() : render2048Page()}
+      ${renderBottomNav()}
+    `;
+    bindTopbar();
+    bindChildRow();
+    bindBottomNav();
+    if (activeGameView === 'sudoku') bindSudokuPage(); else bind2048Page();
+    return;
+  }
+
   const tabContent = mainTab === 'jeux' ? `
       ${renderLogicGames()}
       ${renderSudoku()}
@@ -1476,7 +1494,7 @@ function renderBottomNav(){
 
 function bindBottomNav(){
   document.querySelectorAll('[data-main-tab]').forEach(el => {
-    el.onclick = () => { mainTab = el.dataset.mainTab; render(); };
+    el.onclick = () => { activeGameView = null; mainTab = el.dataset.mainTab; render(); };
   });
 }
 
@@ -1789,32 +1807,34 @@ function bindSudoku(){
     };
   });
   const openBtn = document.getElementById('btn-open-sudoku');
-  if (openBtn) openBtn.onclick = () => openSudokuModal();
+  if (openBtn) openBtn.onclick = () => { sudokuSelectedCell = null; activeGameView = 'sudoku'; render(); };
 }
 
 let sudokuSelectedCell = null; // [row, col] actuellement sélectionnée dans la grille ouverte
 
-function openSudokuModal(){
-  sudokuSelectedCell = null;
-  renderSudokuModal();
-}
-
-/* La fenêtre (structure, animation d'ouverture, défilement) n'est créée qu'ici, une seule
-   fois. Chaque coup ne fait ensuite que rafraîchir le contenu via updateSudokuView() —
-   recréer toute la fenêtre à chaque case cochée rejouait l'animation et remontait le
-   défilement à chaque fois, ce qui la faisait paraître figée sur certains téléphones. */
-function renderSudokuModal(){
+/* Page plein écran (pas une fenêtre superposée) : la structure n'est posée qu'ici, une
+   seule fois par ouverture. Chaque coup ne fait ensuite que rafraîchir le contenu via
+   updateSudokuView(), sans reconstruire toute la page. */
+function renderSudokuPage(){
   const child = getChild(activeChildId);
   const difficultyId = childLogicDifficulty(child.id, 'sudoku');
-  openModal(`
-    <h3 class="modal-title">🔢 Sudoku du jour</h3>
-    <p class="modal-sub">${escapeHtml(child.name)} · ${difficultyConfig(difficultyId).label}</p>
+  return `
+  <section class="logic-panel">
+    <div class="game-page-head">
+      <button class="btn btn-ghost btn-sm" id="btn-sudoku-back">← Retour</button>
+      <div>
+        <h2>🔢 Sudoku du jour</h2>
+        <p class="game-page-sub">${escapeHtml(child.name)} · ${difficultyConfig(difficultyId).label}</p>
+      </div>
+    </div>
     <div id="sudoku-complete-msg"></div>
     <div class="sudoku-grid" id="sudoku-grid"></div>
     <div class="sudoku-palette" id="sudoku-palette"></div>
-    <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-sudoku">Fermer</button></div>
-  `, { wide: true });
-  document.getElementById('btn-close-sudoku').onclick = closeModal;
+  </section>`;
+}
+
+function bindSudokuPage(){
+  document.getElementById('btn-sudoku-back').onclick = () => { activeGameView = null; render(); };
   updateSudokuView();
 }
 
@@ -1869,9 +1889,10 @@ function updateSudokuView(){
         saveData();
         launchConfetti();
         showToast(`Sudoku terminé ! +${points} pts`, '🏆');
-        render();
+        render(); // reconstruit toute la page (inclut déjà la grille/palette à jour)
+      } else {
+        updateSudokuView();
       }
-      updateSudokuView();
     };
   });
 }
@@ -1893,20 +1914,24 @@ function render2048(){
 
 function bind2048(){
   const openBtn = document.getElementById('btn-open-2048');
-  if (openBtn) openBtn.onclick = () => render2048Modal();
+  if (openBtn) openBtn.onclick = () => { activeGameView = '2048'; render(); };
 }
 
 let touch2048Start = null;
 
-/* Comme pour le sudoku : la fenêtre n'est créée qu'une fois ici, chaque coup ne fait
-   ensuite que rafraîchir la grille/le score via update2048View() (pas de ré-ouverture
-   complète de la fenêtre, qui rejouait l'animation et remontait le défilement à chaque
-   coup sur certains téléphones). */
-function render2048Modal(){
-  const child = getChild(activeChildId);
-  openModal(`
-    <h3 class="modal-title">🎯 2048</h3>
-    <p class="modal-sub" id="g2048-score"></p>
+/* Page plein écran (pas une fenêtre superposée) : la structure n'est posée qu'ici, une
+   seule fois par ouverture. Chaque coup ne fait ensuite que rafraîchir la grille/le score
+   via update2048View(), sans reconstruire toute la page. */
+function render2048Page(){
+  return `
+  <section class="logic-panel">
+    <div class="game-page-head">
+      <button class="btn btn-ghost btn-sm" id="btn-2048-back">← Retour</button>
+      <div>
+        <h2>🎯 2048</h2>
+        <p class="game-page-sub" id="g2048-score"></p>
+      </div>
+    </div>
     <div id="g2048-over"></div>
     <div class="g2048-grid" id="g2048-grid"></div>
     <div class="g2048-controls">
@@ -1914,13 +1939,13 @@ function render2048Modal(){
       <button type="button" class="g2048-arrow" data-dir="left">⬅️</button><button type="button" class="g2048-arrow" data-dir="down">⬇️</button><button type="button" class="g2048-arrow" data-dir="right">➡️</button>
     </div>
     <p class="help-text" style="text-align:center;">Glisse sur la grille ou utilise les flèches.</p>
-    <div class="modal-actions" style="justify-content:space-between;">
-      <button class="btn btn-ghost" id="btn-2048-new">Nouvelle partie</button>
-      <button class="btn btn-ghost" id="btn-close-2048">Fermer</button>
-    </div>
-  `, { wide: true });
+    <button class="btn btn-ghost btn-block" id="btn-2048-new" style="margin-top:10px;">Nouvelle partie</button>
+  </section>`;
+}
 
-  document.getElementById('btn-close-2048').onclick = closeModal;
+function bind2048Page(){
+  const child = getChild(activeChildId);
+  document.getElementById('btn-2048-back').onclick = () => { activeGameView = null; render(); };
   document.getElementById('btn-2048-new').onclick = () => {
     save2048State(child.id, { grid: new2048Grid(), score: 0, over: false });
     saveData();
@@ -1935,8 +1960,8 @@ function render2048Modal(){
     touch2048Start = { x: t.clientX, y: t.clientY };
   }, { passive: true });
   // Sans ce blocage, le navigateur interprète souvent un glissement vertical comme un
-  // défilement de page (la modale est scrollable) et « avale » le geste avant qu'on ait pu
-  // calculer la direction dans touchend — le glissement semblait alors ne rien faire.
+  // défilement de la page et « avale » le geste avant qu'on ait pu calculer la direction
+  // dans touchend — le glissement semblait alors ne rien faire.
   gridEl.addEventListener('touchmove', (e) => {
     if (touch2048Start) e.preventDefault();
   }, { passive: false });
@@ -1981,11 +2006,11 @@ function play2048Move(childId, direction){
   if (newMilestones.length){
     launchConfetti();
     showToast(`Tuile ${newMilestones[newMilestones.length - 1].value} ! +${totalPoints} pts`, '🎉');
-    render();
-  } else if (over){
-    showToast('Partie terminée !', '🏁');
+    render(); // reconstruit toute la page (inclut déjà la grille/score à jour)
+  } else {
+    if (over) showToast('Partie terminée !', '🏁');
+    update2048View();
   }
-  update2048View();
 }
 
 function renderBadges(){

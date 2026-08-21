@@ -253,6 +253,8 @@ body[data-theme="royaume"] .pet-page-sub{color:#f6e7bf;}
 body[data-theme="royaume"] .pet-mood{color:#ffe28a; text-shadow:0 1px 0 rgba(0,0,0,.4);}
 body[data-theme="royaume"] .pet-gauge-label{color:#f6e7bf;}
 body[data-theme="royaume"] .pet-page-empty h2{color:#ffe28a; text-shadow:0 2px 0 rgba(0,0,0,.4);}
+body[data-theme="royaume"] .game-page-head h2{color:#ffe28a; text-shadow:0 2px 0 rgba(0,0,0,.4);}
+body[data-theme="royaume"] .game-page-sub{color:#f6e7bf;}
 
 body[data-theme="royaume"] .toast{background:linear-gradient(180deg,#ffe28a,var(--rk-gold-deep)); color:#5b3a05; box-shadow:0 4px 0 var(--rk-gold-shadow), 0 8px 14px rgba(0,0,0,.4);}
 body[data-theme="royaume"] .toast-undo{background:var(--rk-wood-dark); color:#ffe28a;}
@@ -498,6 +500,11 @@ body[data-theme]:not([data-theme="royaume"]) .footer-note{color:var(--theme-mute
 /* ---------- compagnon virtuel ---------- */
 .pet-page{text-align:center;}
 .pet-page-sub{margin:0 0 4px; font-size:12.5px; text-transform:uppercase; letter-spacing:.6px; color:var(--theme-muted, var(--ink-700));}
+
+/* ---------- pages de jeu plein écran (sudoku, 2048) ---------- */
+.game-page-head{display:flex; align-items:center; gap:14px; margin-bottom:16px;}
+.game-page-head h2{font-size:18px; margin:0; color:var(--theme-text, var(--ink-900));}
+.game-page-sub{margin:2px 0 0; font-size:12px; color:var(--theme-muted, var(--ink-700));}
 .pet-big-emoji{font-size:110px; line-height:1.1; margin:8px 0; animation:pet-idle 2.4s ease-in-out infinite;}
 @keyframes pet-idle{0%,100%{transform:translateY(0) scale(1);} 50%{transform:translateY(-10px) scale(1.03);}}
 .pet-mood{margin:0 0 18px; font-size:14px; font-weight:700; color:var(--theme-text, var(--ink-900));}
