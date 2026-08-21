@@ -461,6 +461,11 @@ function defaultData(){
     logicProgress: {},     // { childId: { gameId: { 'YYYY-MM-DD': [questionIndex du jour, ...] } } }
     logicTotalSolved: {},  // { childId: nombre total de défis réussis (toutes dates confondues) }
     wheelSpins: {},         // { childId: { week: 'YYYY-Www', prize: { label, points } } }
+    pets: {},                // { childId: { species, totalFeeds, lastFedAt } }
+    teamGoalEnabled: false,
+    teamGoalThreshold: 60,   // points cumulés (tous enfants) à atteindre chaque semaine
+    teamGoalLabel: 'Une sortie en famille',
+    teamGoalClaims: {},      // { 'YYYY-Www': true } semaines déjà célébrées
   };
 }
 
@@ -473,6 +478,11 @@ function migrateData(data){
   if (!Array.isArray(data.pendingRequests)) data.pendingRequests = [];
   if (!data.logicProgress || typeof data.logicProgress !== 'object') data.logicProgress = {};
   if (!data.wheelSpins || typeof data.wheelSpins !== 'object') data.wheelSpins = {};
+  if (!data.pets || typeof data.pets !== 'object') data.pets = {};
+  if (typeof data.teamGoalEnabled !== 'boolean') data.teamGoalEnabled = false;
+  if (typeof data.teamGoalThreshold !== 'number' || data.teamGoalThreshold <= 0) data.teamGoalThreshold = 60;
+  if (typeof data.teamGoalLabel !== 'string' || !data.teamGoalLabel) data.teamGoalLabel = 'Une sortie en famille';
+  if (!data.teamGoalClaims || typeof data.teamGoalClaims !== 'object') data.teamGoalClaims = {};
 
   // Migration ponctuelle (une seule fois) : ajoute les missions ménage introduites
   // après la première version, sans les ré-ajouter si le parent les a supprimées ensuite.
@@ -778,6 +788,52 @@ function pickWheelPrize(){
   return WHEEL_PRIZES[0];
 }
 
+const PET_SPECIES = {
+  dragon: { label: 'Dragon', stages: ['🥚', '🐣', '🐲', '🐉'] },
+  licorne: { label: 'Licorne', stages: ['🥚', '🐴', '🦄', '🦄'] },
+  renard: { label: 'Renard', stages: ['🥚', '🦝', '🦊', '🦊'] },
+};
+const PET_FEED_COST = 2;
+const PET_STAGE_THRESHOLDS = [0, 1, 10, 25]; // nombre de fois nourri pour atteindre chaque stade
+const PET_HUNGER_DECAY_HOURS = 48; // temps pour retomber de 100 à 0 sans être nourri
+
+function petStageIndex(totalFeeds){
+  let idx = 0;
+  PET_STAGE_THRESHOLDS.forEach((threshold, i) => { if (totalFeeds >= threshold) idx = i; });
+  return idx;
+}
+
+function petHunger(pet){
+  if (!pet.lastFedAt) return 0;
+  const hoursSince = (Date.now() - pet.lastFedAt) / 3600000;
+  return Math.max(0, Math.min(100, Math.round(100 - hoursSince * (100 / PET_HUNGER_DECAY_HOURS))));
+}
+
+function petMoodLabel(hunger){
+  if (hunger >= 70) return 'est en pleine forme !';
+  if (hunger >= 30) return 'a un peu faim.';
+  return 'a très faim, nourris-le vite !';
+}
+
+/* Somme des points gagnés cette semaine par tous les enfants, pour l'objectif d'équipe. */
+function teamGoalProgress(){
+  return state.children.reduce((sum, c) => sum + pointsThisWeek(c.id), 0);
+}
+
+/* À appeler après tout changement de missions accomplies : célèbre (une seule fois par
+   semaine) le franchissement de l'objectif d'équipe. */
+function checkTeamGoal(){
+  if (!state.teamGoalEnabled) return;
+  const wk = weekKey();
+  if (state.teamGoalClaims[wk]) return;
+  if (teamGoalProgress() >= state.teamGoalThreshold){
+    state.teamGoalClaims[wk] = true;
+    saveData();
+    launchConfetti();
+    showToast(`Objectif d'équipe atteint : ${state.teamGoalLabel} !`, '🤝');
+  }
+}
+
 function tasksForChildToday(){
   const schoolDay = isSchoolDay();
   return state.tasks.filter(t => !t.schoolDaysOnly || schoolDay);
@@ -811,6 +867,7 @@ function toggleTask(childId, taskId){
     addPoints(childId, -task.points);
   }
   saveData();
+  checkTeamGoal();
   render();
 }
 
@@ -838,10 +895,12 @@ function render(){
     ${renderTopbar()}
     ${renderBackupReminder()}
     ${renderChildRow()}
+    ${renderTeamGoal()}
     ${renderSiblingChallenge()}
     ${renderLogicGames()}
     ${renderBadges()}
     ${renderWheel()}
+    ${renderPet()}
     ${renderBoard()}
     ${renderCalendar()}
     ${renderHistory()}
@@ -854,6 +913,7 @@ function render(){
   bindLogicGames();
   bindBadges();
   bindWheel();
+  bindPet();
   bindBoard();
 }
 
@@ -1212,6 +1272,80 @@ function renderSiblingChallenge(){
     <h2 id="sibling-title" style="margin-bottom:10px;">⚔️ Défi de la semaine</h2>
     ${rows}
   </section>`;
+}
+
+function renderTeamGoal(){
+  if (!state.teamGoalEnabled) return '';
+  const progress = teamGoalProgress();
+  const pct = Math.min(100, Math.round((progress / state.teamGoalThreshold) * 100));
+  const claimed = state.teamGoalClaims[weekKey()] === true;
+  return `
+  <section class="logic-panel team-goal-panel" aria-labelledby="team-goal-title">
+    <h2 id="team-goal-title" class="team-goal-title">🤝 Mission d'équipe</h2>
+    <p class="team-goal-sub">${claimed ? `Objectif atteint : ${escapeHtml(state.teamGoalLabel)} 🎉` : `${escapeHtml(state.teamGoalLabel)} — ${escapeHtml(state.teamGoalThreshold)} pts cumulés cette semaine`}</p>
+    <div class="xp-bar-mini team-goal-bar"><div class="xp-bar-mini-fill" style="width:${pct}%;"></div></div>
+    <p class="team-goal-count">${progress} / ${escapeHtml(state.teamGoalThreshold)} pts</p>
+  </section>`;
+}
+
+function renderPet(){
+  const child = getChild(activeChildId);
+  const pet = state.pets[child.id];
+  if (!pet){
+    return `
+    <section class="logic-panel logic-teaser" aria-labelledby="pet-title">
+      <div>
+        <h2 id="pet-title">🐾 Choisis ton compagnon</h2>
+        <p>Adopte-le et prends-en soin en le nourrissant avec tes points !</p>
+      </div>
+      <div class="pet-species-picker">
+        ${Object.entries(PET_SPECIES).map(([id, sp]) => `<button class="pet-species-btn" data-pick-pet="${id}">${sp.stages[0]} ${escapeHtml(sp.label)}</button>`).join('')}
+      </div>
+    </section>`;
+  }
+  const species = PET_SPECIES[pet.species];
+  const stage = petStageIndex(pet.totalFeeds);
+  const hunger = petHunger(pet);
+  const canFeed = getPoints(child.id) >= PET_FEED_COST;
+  return `
+  <section class="logic-panel logic-teaser" aria-labelledby="pet-title">
+    <div>
+      <h2 id="pet-title">${species.stages[stage]} ${escapeHtml(species.label)} de ${escapeHtml(child.name)}</h2>
+      <p>Il ${escapeHtml(petMoodLabel(hunger))}</p>
+      <div class="pet-hunger-track"><div class="pet-hunger-fill" style="width:${hunger}%;"></div></div>
+    </div>
+    <button class="btn btn-gold" id="btn-feed-pet" ${canFeed ? '' : 'disabled'}>Nourrir (-${PET_FEED_COST} pts)</button>
+  </section>`;
+}
+
+function bindPet(){
+  document.querySelectorAll('[data-pick-pet]').forEach(el => {
+    el.onclick = () => {
+      const child = getChild(activeChildId);
+      state.pets[child.id] = { species: el.dataset.pickPet, totalFeeds: 0, lastFedAt: null };
+      saveData();
+      render();
+    };
+  });
+  const feedBtn = document.getElementById('btn-feed-pet');
+  if (feedBtn) feedBtn.onclick = () => {
+    const child = getChild(activeChildId);
+    const pet = state.pets[child.id];
+    if (!pet || getPoints(child.id) < PET_FEED_COST) return;
+    const prevStage = petStageIndex(pet.totalFeeds);
+    addPoints(child.id, -PET_FEED_COST);
+    pet.totalFeeds++;
+    pet.lastFedAt = Date.now();
+    saveData();
+    const newStage = petStageIndex(pet.totalFeeds);
+    if (newStage > prevStage){
+      launchConfetti();
+      showToast('Ton compagnon a évolué !', '✨');
+    } else {
+      showToast('Compagnon nourri !', '🍖');
+    }
+    render();
+  };
 }
 
 function openLogicGame(gameId){
@@ -1910,7 +2044,23 @@ function rewardsSettingsHtml(){
         <input type="number" id="monthly-reward-amount" min="1" max="1000" value="${escapeHtml(state.monthlyRewardAmount)}">
       </div>` : ''}
     </div>
-    ${rows}<button class="btn btn-primary btn-block" id="btn-new-reward" style="margin-top:10px;">＋ Ajouter une récompense</button>`;
+    ${rows}<button class="btn btn-primary btn-block" id="btn-new-reward" style="margin-top:10px;">＋ Ajouter une récompense</button>
+    <div class="list-row" style="flex-direction:column; align-items:stretch; gap:8px; margin-top:14px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="font-size:22px;">🤝</span>
+        <div class="grow"><div class="rname">Mission d'équipe</div><div class="rmeta">Objectif commun hebdomadaire (points cumulés de tous les enfants)</div></div>
+        <button class="btn btn-sm ${state.teamGoalEnabled ? 'btn-gold' : 'btn-ghost'}" id="btn-toggle-team-goal">${state.teamGoalEnabled ? 'Activée' : 'Désactivée'}</button>
+      </div>
+      ${state.teamGoalEnabled ? `
+      <div class="field" style="margin:0;">
+        <label for="team-goal-threshold">Points à atteindre ensemble chaque semaine</label>
+        <input type="number" id="team-goal-threshold" min="1" max="2000" value="${escapeHtml(state.teamGoalThreshold)}">
+      </div>
+      <div class="field" style="margin:0;">
+        <label for="team-goal-label">Récompense en cas de réussite</label>
+        <input type="text" id="team-goal-label" maxlength="60" value="${escapeHtml(state.teamGoalLabel)}">
+      </div>` : ''}
+    </div>`;
 }
 
 function appearanceSettingsHtml(){
@@ -2058,6 +2208,25 @@ function bindSettingsContent(){
   if (monthlyAmountInput) monthlyAmountInput.onchange = () => {
     const amount = Math.max(1, parseInt(monthlyAmountInput.value, 10) || 1);
     state.monthlyRewardAmount = amount;
+    saveData();
+    render();
+  };
+  const toggleTeamGoalBtn = document.getElementById('btn-toggle-team-goal');
+  if (toggleTeamGoalBtn) toggleTeamGoalBtn.onclick = () => {
+    state.teamGoalEnabled = !state.teamGoalEnabled;
+    saveData();
+    renderSettingsModal();
+    render();
+  };
+  const teamGoalThresholdInput = document.getElementById('team-goal-threshold');
+  if (teamGoalThresholdInput) teamGoalThresholdInput.onchange = () => {
+    state.teamGoalThreshold = Math.max(1, parseInt(teamGoalThresholdInput.value, 10) || 1);
+    saveData();
+    render();
+  };
+  const teamGoalLabelInput = document.getElementById('team-goal-label');
+  if (teamGoalLabelInput) teamGoalLabelInput.onchange = () => {
+    state.teamGoalLabel = teamGoalLabelInput.value.trim() || 'Une sortie en famille';
     saveData();
     render();
   };
