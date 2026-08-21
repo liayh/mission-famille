@@ -192,7 +192,6 @@ const LOGIC_GAMES = [
 let state = null;          // data loaded from localStorage
 let activeChildId = null;  // currently selected child tab
 let mainTab = 'accueil';   // onglet principal affiché : accueil / jeux / historique
-let activeGameView = null; // page de jeu plein écran ouverte : null / 'sudoku' / '2048'
 let failedPinAttempts = 0;
 let pinLockUntil = 0;
 let calendarMonth = monthKey();
@@ -325,270 +324,6 @@ function dailySeed(str){
     hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
   }
   return hash;
-}
-
-function shuffledSeeded(items, rng){
-  const result = [...items];
-  for (let i = result.length - 1; i > 0; i--){
-    const j = Math.floor(rng() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-}
-
-/* ---------------------------- sudoku du jour ---------------------------- */
-
-const SUDOKU_DIFFICULTY_CONFIG = {
-  facile: { clues: 40, points: 5 },
-  moyen: { clues: 32, points: 8 },
-  difficile: { clues: 26, points: 12 },
-};
-
-function sudokuEmptyGrid(){
-  return Array.from({ length: 9 }, () => Array(9).fill(0));
-}
-
-function sudokuIsValid(grid, row, col, num){
-  for (let i = 0; i < 9; i++){
-    if (i !== col && grid[row][i] === num) return false;
-    if (i !== row && grid[i][col] === num) return false;
-  }
-  const boxRow = Math.floor(row / 3) * 3, boxCol = Math.floor(col / 3) * 3;
-  for (let r = 0; r < 3; r++){
-    for (let c = 0; c < 3; c++){
-      if ((boxRow + r !== row || boxCol + c !== col) && grid[boxRow + r][boxCol + c] === num) return false;
-    }
-  }
-  return true;
-}
-
-function sudokuFillGrid(grid, rng){
-  for (let pos = 0; pos < 81; pos++){
-    const row = Math.floor(pos / 9), col = pos % 9;
-    if (grid[row][col] !== 0) continue;
-    for (const num of shuffledSeeded([1,2,3,4,5,6,7,8,9], rng)){
-      if (sudokuIsValid(grid, row, col, num)){
-        grid[row][col] = num;
-        if (sudokuFillGrid(grid, rng)) return true;
-        grid[row][col] = 0;
-      }
-    }
-    return false;
-  }
-  return true;
-}
-
-/* Compte les solutions d'une grille (s'arrête dès que `limit` est atteint) — sert à vérifier
-   qu'un indice retiré ne casse pas l'unicité de la solution du sudoku généré. */
-function sudokuCountSolutions(grid, limit){
-  let count = 0;
-  function solve(){
-    if (count >= limit) return;
-    let row = -1, col = -1;
-    outer: for (let r = 0; r < 9; r++){
-      for (let c = 0; c < 9; c++){
-        if (grid[r][c] === 0){ row = r; col = c; break outer; }
-      }
-    }
-    if (row === -1){ count++; return; }
-    for (let num = 1; num <= 9; num++){
-      if (sudokuIsValid(grid, row, col, num)){
-        grid[row][col] = num;
-        solve();
-        grid[row][col] = 0;
-        if (count >= limit) return;
-      }
-    }
-  }
-  solve();
-  return count;
-}
-
-const sudokuPuzzleCache = {};
-
-/* Génère (et met en cache) le sudoku du jour pour une difficulté donnée : une grille pleine
-   valide tirée au sort de façon déterministe (même sudoku pour tout le monde ce jour-là),
-   puis des indices retirés un par un tant que la solution reste unique. */
-function getSudokuPuzzle(dateStr, difficultyId){
-  const key = dateStr + ':' + difficultyId;
-  if (!sudokuPuzzleCache[key]){
-    const rng = seededRandom(dailySeed('sudoku:' + key));
-    const solution = sudokuEmptyGrid();
-    sudokuFillGrid(solution, rng);
-    const puzzle = solution.map(row => [...row]);
-    const cellOrder = shuffledSeeded(Array.from({ length: 81 }, (_, i) => i), rng);
-    const targetRemoved = 81 - SUDOKU_DIFFICULTY_CONFIG[difficultyId].clues;
-    let removed = 0;
-    for (const pos of cellOrder){
-      if (removed >= targetRemoved) break;
-      const row = Math.floor(pos / 9), col = pos % 9;
-      const backup = puzzle[row][col];
-      puzzle[row][col] = 0;
-      const solCount = sudokuCountSolutions(puzzle.map(r => [...r]), 2);
-      if (solCount === 1) removed++;
-      else puzzle[row][col] = backup;
-    }
-    sudokuPuzzleCache[key] = { puzzle, solution };
-  }
-  return sudokuPuzzleCache[key];
-}
-
-function getSudokuState(childId, difficultyId){
-  const dateStr = todayStr();
-  const { puzzle } = getSudokuPuzzle(dateStr, difficultyId);
-  const stored = state.sudokuProgress?.[childId]?.[difficultyId]?.[dateStr];
-  if (stored && stored.grid) return stored;
-  return { grid: puzzle.map(row => [...row]), completed: false };
-}
-
-function saveSudokuState(childId, difficultyId, sudokuState){
-  if (!state.sudokuProgress) state.sudokuProgress = {};
-  if (!state.sudokuProgress[childId]) state.sudokuProgress[childId] = {};
-  if (!state.sudokuProgress[childId][difficultyId]) state.sudokuProgress[childId][difficultyId] = {};
-  state.sudokuProgress[childId][difficultyId][todayStr()] = sudokuState;
-}
-
-function sudokuHasConflict(grid, row, col){
-  const val = grid[row][col];
-  return val ? !sudokuIsValid(grid, row, col, val) : false;
-}
-
-function sudokuIsComplete(grid){
-  for (let r = 0; r < 9; r++){
-    for (let c = 0; c < 9; c++){
-      if (!grid[r][c] || sudokuHasConflict(grid, r, c)) return false;
-    }
-  }
-  return true;
-}
-
-/* ---------------------------- 2048 ---------------------------- */
-
-// Pas de "défi du jour" ici : contrairement aux autres jeux, 2048 se joue librement, sans
-// limite quotidienne. Les points sont attribués une seule fois par palier de tuile atteint.
-const GAME2048_MILESTONES = [
-  { value: 128, points: 3 },
-  { value: 256, points: 5 },
-  { value: 512, points: 8 },
-  { value: 1024, points: 12 },
-  { value: 2048, points: 20 },
-];
-
-function empty2048Grid(){
-  return Array.from({ length: 4 }, () => Array(4).fill(0));
-}
-
-function spawn2048Tile(grid){
-  const empties = [];
-  for (let r = 0; r < 4; r++){
-    for (let c = 0; c < 4; c++){
-      if (grid[r][c] === 0) empties.push([r, c]);
-    }
-  }
-  if (!empties.length) return grid;
-  const [r, c] = empties[Math.floor(Math.random() * empties.length)];
-  grid[r][c] = Math.random() < 0.9 ? 2 : 4;
-  return grid;
-}
-
-function new2048Grid(){
-  const grid = empty2048Grid();
-  spawn2048Tile(grid);
-  spawn2048Tile(grid);
-  return grid;
-}
-
-/* Compacte et fusionne une ligne vers l'index 0 (gauche/haut) — les 4 directions
-   réutilisent cette même fonction en inversant la ligne au besoin avant/après. */
-function compactAndMergeLine(line){
-  const nums = line.filter(v => v !== 0);
-  const merged = [];
-  let scoreGained = 0;
-  let i = 0;
-  while (i < nums.length){
-    if (i < nums.length - 1 && nums[i] === nums[i + 1]){
-      const val = nums[i] * 2;
-      merged.push(val);
-      scoreGained += val;
-      i += 2;
-    } else {
-      merged.push(nums[i]);
-      i += 1;
-    }
-  }
-  while (merged.length < line.length) merged.push(0);
-  return { line: merged, scoreGained };
-}
-
-function move2048(grid, direction){
-  const size = grid.length;
-  const newGrid = Array.from({ length: size }, () => Array(size).fill(0));
-  let scoreGained = 0, moved = false;
-  if (direction === 'left' || direction === 'right'){
-    for (let r = 0; r < size; r++){
-      let line = grid[r].slice();
-      if (direction === 'right') line = line.reverse();
-      const { line: merged, scoreGained: gained } = compactAndMergeLine(line);
-      scoreGained += gained;
-      const finalLine = direction === 'right' ? merged.slice().reverse() : merged;
-      newGrid[r] = finalLine;
-      if (finalLine.some((v, i) => v !== grid[r][i])) moved = true;
-    }
-  } else {
-    for (let c = 0; c < size; c++){
-      let line = grid.map(row => row[c]);
-      if (direction === 'down') line = line.reverse();
-      const { line: merged, scoreGained: gained } = compactAndMergeLine(line);
-      scoreGained += gained;
-      const finalLine = direction === 'down' ? merged.slice().reverse() : merged;
-      for (let r = 0; r < size; r++){
-        newGrid[r][c] = finalLine[r];
-        if (finalLine[r] !== grid[r][c]) moved = true;
-      }
-    }
-  }
-  return { grid: newGrid, scoreGained, moved };
-}
-
-function is2048GameOver(grid){
-  for (let r = 0; r < 4; r++){
-    for (let c = 0; c < 4; c++){
-      if (grid[r][c] === 0) return false;
-      if (c < 3 && grid[r][c] === grid[r][c + 1]) return false;
-      if (r < 3 && grid[r][c] === grid[r + 1][c]) return false;
-    }
-  }
-  return true;
-}
-
-/* Attribue les points des paliers de tuile fraîchement atteints (une seule fois chacun,
-   à vie) et renvoie ce qui vient d'être débloqué pour l'affichage. */
-function check2048Milestones(childId, grid){
-  const maxTile = Math.max(...grid.flat());
-  if (!state.game2048Milestones) state.game2048Milestones = {};
-  if (!state.game2048Milestones[childId]) state.game2048Milestones[childId] = [];
-  const already = state.game2048Milestones[childId];
-  let totalPoints = 0;
-  const newMilestones = [];
-  for (const m of GAME2048_MILESTONES){
-    if (maxTile >= m.value && !already.includes(m.value)){
-      already.push(m.value);
-      totalPoints += m.points;
-      newMilestones.push(m);
-    }
-  }
-  return { totalPoints, newMilestones };
-}
-
-function get2048State(childId){
-  const stored = state.game2048?.[childId];
-  if (stored && stored.grid) return stored;
-  return { grid: new2048Grid(), score: 0, over: false };
-}
-
-function save2048State(childId, gameState){
-  if (!state.game2048) state.game2048 = {};
-  state.game2048[childId] = gameState;
 }
 
 /* Tire les 10 questions du jour pour un jeu donné, dans un ordre stable pour la journée
@@ -822,9 +557,6 @@ function defaultData(){
     logicProgress: {},     // { childId: { gameId: { difficultyId: { 'YYYY-MM-DD': [questionIndex du jour, ...] } } } }
     logicTotalSolved: {},  // { childId: nombre total de défis réussis (toutes dates confondues) }
     logicDifficulty: {},    // { childId: { gameId: 'facile' | 'moyen' | 'difficile' } }
-    sudokuProgress: {},      // { childId: { difficultyId: { 'YYYY-MM-DD': { grid, completed } } } }
-    game2048: {},            // { childId: { grid, score, over } }
-    game2048Milestones: {},  // { childId: [128, 256, ...] paliers de tuile déjà récompensés }
     wheelSpins: {},         // { childId: { week: 'YYYY-Www', prize: { label, points } } }
     pets: {},                // { childId: { species, totalFeeds, lastFedAt } }
     teamGoalEnabled: false,
@@ -844,9 +576,6 @@ function migrateData(data){
   if (!Array.isArray(data.pendingRequests)) data.pendingRequests = [];
   if (!data.logicProgress || typeof data.logicProgress !== 'object') data.logicProgress = {};
   if (!data.wheelSpins || typeof data.wheelSpins !== 'object') data.wheelSpins = {};
-  if (!data.sudokuProgress || typeof data.sudokuProgress !== 'object') data.sudokuProgress = {};
-  if (!data.game2048 || typeof data.game2048 !== 'object') data.game2048 = {};
-  if (!data.game2048Milestones || typeof data.game2048Milestones !== 'object') data.game2048Milestones = {};
   if (!data.pets || typeof data.pets !== 'object') data.pets = {};
   Object.values(data.pets).forEach(pet => {
     if (typeof pet.happiness !== 'number') pet.happiness = 100;
@@ -1408,27 +1137,8 @@ function render(){
     activeChildId = state.children[0].id;
   }
 
-  // Sudoku et 2048 s'ouvrent en page à part entière (pas en fenêtre superposée) : plus de
-  // place, pas de zone de défilement séparée pouvant gêner le tactile, et ça passe par le
-  // même mécanisme d'affichage que le reste de l'appli.
-  if (activeGameView){
-    app.innerHTML = `
-      ${renderTopbar()}
-      ${renderChildRow()}
-      ${activeGameView === 'sudoku' ? renderSudokuPage() : render2048Page()}
-      ${renderBottomNav()}
-    `;
-    bindTopbar();
-    bindChildRow();
-    bindBottomNav();
-    if (activeGameView === 'sudoku') bindSudokuPage(); else bind2048Page();
-    return;
-  }
-
   const tabContent = mainTab === 'jeux' ? `
       ${renderLogicGames()}
-      ${renderSudoku()}
-      ${render2048()}
       ${renderBadges()}
       ${renderWheel()}
       ${renderLootChest()}
@@ -1456,8 +1166,6 @@ function render(){
   bindBottomNav();
   if (mainTab === 'jeux'){
     bindLogicGames();
-    bindSudoku();
-    bind2048();
     bindBadges();
     bindWheel();
     bindLootChest();
@@ -1494,7 +1202,7 @@ function renderBottomNav(){
 
 function bindBottomNav(){
   document.querySelectorAll('[data-main-tab]').forEach(el => {
-    el.onclick = () => { activeGameView = null; mainTab = el.dataset.mainTab; render(); };
+    el.onclick = () => { mainTab = el.dataset.mainTab; render(); };
   });
 }
 
@@ -1777,240 +1485,6 @@ function openLogicGamesMenu(){
 function bindLogicGames(){
   const openBtn = document.getElementById('btn-open-logic-menu');
   if (openBtn) openBtn.onclick = () => openLogicGamesMenu();
-}
-
-function renderSudoku(){
-  const child = getChild(activeChildId);
-  const difficultyId = childLogicDifficulty(child.id, 'sudoku');
-  const sudokuState = getSudokuState(child.id, difficultyId);
-  const points = SUDOKU_DIFFICULTY_CONFIG[difficultyId].points;
-  return `
-  <section class="logic-panel logic-teaser" aria-labelledby="sudoku-title">
-    <div>
-      <h2 id="sudoku-title">🔢 Sudoku du jour</h2>
-      <p>${sudokuState.completed ? "Terminé aujourd'hui — reviens demain pour un nouveau sudoku !" : `${difficultyConfig(difficultyId).label} · +${points} pts en le terminant`}</p>
-      <div class="difficulty-picker">
-        ${DIFFICULTIES.map(d => `<button class="difficulty-pill ${d.id === difficultyId ? 'active' : ''}" data-sudoku-difficulty="${d.id}">${d.label}</button>`).join('')}
-      </div>
-    </div>
-    <button class="btn btn-gold" id="btn-open-sudoku">${sudokuState.completed ? 'Revoir' : 'Jouer'}</button>
-  </section>`;
-}
-
-function bindSudoku(){
-  document.querySelectorAll('[data-sudoku-difficulty]').forEach(btn => {
-    btn.onclick = () => {
-      const child = getChild(activeChildId);
-      setChildLogicDifficulty(child.id, 'sudoku', btn.dataset.sudokuDifficulty);
-      saveData();
-      render();
-    };
-  });
-  const openBtn = document.getElementById('btn-open-sudoku');
-  if (openBtn) openBtn.onclick = () => { sudokuSelectedCell = null; activeGameView = 'sudoku'; render(); };
-}
-
-let sudokuSelectedCell = null; // [row, col] actuellement sélectionnée dans la grille ouverte
-
-/* Page plein écran (pas une fenêtre superposée) : la structure n'est posée qu'ici, une
-   seule fois par ouverture. Chaque coup ne fait ensuite que rafraîchir le contenu via
-   updateSudokuView(), sans reconstruire toute la page. */
-function renderSudokuPage(){
-  const child = getChild(activeChildId);
-  const difficultyId = childLogicDifficulty(child.id, 'sudoku');
-  return `
-  <section class="logic-panel">
-    <div class="game-page-head">
-      <button class="btn btn-ghost btn-sm" id="btn-sudoku-back">← Retour</button>
-      <div>
-        <h2>🔢 Sudoku du jour</h2>
-        <p class="game-page-sub">${escapeHtml(child.name)} · ${difficultyConfig(difficultyId).label}</p>
-      </div>
-    </div>
-    <div id="sudoku-complete-msg"></div>
-    <div class="sudoku-grid" id="sudoku-grid"></div>
-    <div class="sudoku-palette" id="sudoku-palette"></div>
-  </section>`;
-}
-
-function bindSudokuPage(){
-  document.getElementById('btn-sudoku-back').onclick = () => { activeGameView = null; render(); };
-  updateSudokuView();
-}
-
-function updateSudokuView(){
-  const child = getChild(activeChildId);
-  const difficultyId = childLogicDifficulty(child.id, 'sudoku');
-  const { puzzle } = getSudokuPuzzle(todayStr(), difficultyId);
-  const sudokuState = getSudokuState(child.id, difficultyId);
-  const grid = sudokuState.grid;
-
-  const gridEl = document.getElementById('sudoku-grid');
-  if (!gridEl) return; // la fenêtre a été fermée entre temps
-
-  gridEl.innerHTML = grid.map((row, r) => row.map((val, c) => {
-    const isClue = puzzle[r][c] !== 0;
-    const conflict = sudokuHasConflict(grid, r, c);
-    const selected = sudokuSelectedCell && sudokuSelectedCell[0] === r && sudokuSelectedCell[1] === c;
-    const classes = ['sudoku-cell'];
-    if (isClue) classes.push('clue');
-    if (conflict) classes.push('conflict');
-    if (selected) classes.push('selected');
-    if (c % 3 === 0) classes.push('border-left');
-    if (r % 3 === 0) classes.push('border-top');
-    return `<button type="button" class="${classes.join(' ')}" ${isClue || sudokuState.completed ? 'disabled' : `data-cell="${r},${c}"`}>${val || ''}</button>`;
-  }).join('')).join('');
-  document.querySelectorAll('[data-cell]').forEach(btn => {
-    btn.onclick = () => {
-      const [r, c] = btn.dataset.cell.split(',').map(Number);
-      sudokuSelectedCell = [r, c];
-      updateSudokuView();
-    };
-  });
-
-  const completeEl = document.getElementById('sudoku-complete-msg');
-  if (completeEl) completeEl.innerHTML = sudokuState.completed ? '<div class="logic-complete">🏆 Sudoku terminé aujourd\'hui !</div>' : '';
-
-  const paletteEl = document.getElementById('sudoku-palette');
-  if (!paletteEl) return;
-  paletteEl.innerHTML = sudokuState.completed ? '' : [1,2,3,4,5,6,7,8,9].map(n => `<button type="button" class="sudoku-num" data-num="${n}">${n}</button>`).join('') + `<button type="button" class="sudoku-num sudoku-erase" data-num="0">✕</button>`;
-  document.querySelectorAll('[data-num]').forEach(btn => {
-    btn.onclick = () => {
-      if (!sudokuSelectedCell) return;
-      const [r, c] = sudokuSelectedCell;
-      const num = parseInt(btn.dataset.num, 10);
-      grid[r][c] = num;
-      saveSudokuState(child.id, difficultyId, { grid, completed: false });
-      saveData();
-      if (sudokuIsComplete(grid)){
-        const points = SUDOKU_DIFFICULTY_CONFIG[difficultyId].points;
-        addPoints(child.id, points);
-        saveSudokuState(child.id, difficultyId, { grid, completed: true });
-        saveData();
-        launchConfetti();
-        showToast(`Sudoku terminé ! +${points} pts`, '🏆');
-        render(); // reconstruit toute la page (inclut déjà la grille/palette à jour)
-      } else {
-        updateSudokuView();
-      }
-    };
-  });
-}
-
-function render2048(){
-  const child = getChild(activeChildId);
-  const g = get2048State(child.id);
-  const best = Math.max(...g.grid.flat(), 0);
-  const nextMilestone = GAME2048_MILESTONES.find(m => m.value > best);
-  return `
-  <section class="logic-panel logic-teaser" aria-labelledby="g2048-title">
-    <div>
-      <h2 id="g2048-title">🎯 2048</h2>
-      <p>Meilleure tuile : ${best || '—'}${nextMilestone ? ` · prochain palier ${nextMilestone.value} (+${nextMilestone.points} pts)` : ' · tous les paliers débloqués !'}</p>
-    </div>
-    <button class="btn btn-gold" id="btn-open-2048">Jouer</button>
-  </section>`;
-}
-
-function bind2048(){
-  const openBtn = document.getElementById('btn-open-2048');
-  if (openBtn) openBtn.onclick = () => { activeGameView = '2048'; render(); };
-}
-
-let touch2048Start = null;
-
-/* Page plein écran (pas une fenêtre superposée) : la structure n'est posée qu'ici, une
-   seule fois par ouverture. Chaque coup ne fait ensuite que rafraîchir la grille/le score
-   via update2048View(), sans reconstruire toute la page. */
-function render2048Page(){
-  return `
-  <section class="logic-panel">
-    <div class="game-page-head">
-      <button class="btn btn-ghost btn-sm" id="btn-2048-back">← Retour</button>
-      <div>
-        <h2>🎯 2048</h2>
-        <p class="game-page-sub" id="g2048-score"></p>
-      </div>
-    </div>
-    <div id="g2048-over"></div>
-    <div class="g2048-grid" id="g2048-grid"></div>
-    <div class="g2048-controls">
-      <div></div><button type="button" class="g2048-arrow" data-dir="up">⬆️</button><div></div>
-      <button type="button" class="g2048-arrow" data-dir="left">⬅️</button><button type="button" class="g2048-arrow" data-dir="down">⬇️</button><button type="button" class="g2048-arrow" data-dir="right">➡️</button>
-    </div>
-    <p class="help-text" style="text-align:center;">Glisse sur la grille ou utilise les flèches.</p>
-    <button class="btn btn-ghost btn-block" id="btn-2048-new" style="margin-top:10px;">Nouvelle partie</button>
-  </section>`;
-}
-
-function bind2048Page(){
-  const child = getChild(activeChildId);
-  document.getElementById('btn-2048-back').onclick = () => { activeGameView = null; render(); };
-  document.getElementById('btn-2048-new').onclick = () => {
-    save2048State(child.id, { grid: new2048Grid(), score: 0, over: false });
-    saveData();
-    update2048View();
-  };
-  document.querySelectorAll('.g2048-arrow').forEach(btn => {
-    btn.onclick = () => play2048Move(child.id, btn.dataset.dir);
-  });
-  const gridEl = document.getElementById('g2048-grid');
-  gridEl.addEventListener('touchstart', (e) => {
-    const t = e.touches[0];
-    touch2048Start = { x: t.clientX, y: t.clientY };
-  }, { passive: true });
-  // Sans ce blocage, le navigateur interprète souvent un glissement vertical comme un
-  // défilement de la page et « avale » le geste avant qu'on ait pu calculer la direction
-  // dans touchend — le glissement semblait alors ne rien faire.
-  gridEl.addEventListener('touchmove', (e) => {
-    if (touch2048Start) e.preventDefault();
-  }, { passive: false });
-  gridEl.addEventListener('touchend', (e) => {
-    if (!touch2048Start) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - touch2048Start.x, dy = t.clientY - touch2048Start.y;
-    touch2048Start = null;
-    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
-    const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
-    play2048Move(child.id, dir);
-  }, { passive: true });
-  gridEl.addEventListener('touchcancel', () => { touch2048Start = null; }, { passive: true });
-
-  update2048View();
-}
-
-function update2048View(){
-  const child = getChild(activeChildId);
-  const g = get2048State(child.id);
-  const gridEl = document.getElementById('g2048-grid');
-  if (!gridEl) return; // la fenêtre a été fermée entre temps
-  gridEl.innerHTML = g.grid.flat().map(val => `<div class="g2048-cell ${val ? 'g2048-v' + val : ''}">${val || ''}</div>`).join('');
-  const scoreEl = document.getElementById('g2048-score');
-  if (scoreEl) scoreEl.textContent = `${child.name} · Score : ${g.score}`;
-  const overEl = document.getElementById('g2048-over');
-  if (overEl) overEl.innerHTML = g.over ? '<div class="logic-complete">Partie terminée ! Plus de mouvement possible.</div>' : '';
-}
-
-function play2048Move(childId, direction){
-  const g = get2048State(childId);
-  if (g.over) return;
-  const { grid, scoreGained, moved } = move2048(g.grid, direction);
-  if (!moved) return;
-  spawn2048Tile(grid);
-  const score = g.score + scoreGained;
-  const { totalPoints, newMilestones } = check2048Milestones(childId, grid);
-  const over = is2048GameOver(grid);
-  save2048State(childId, { grid, score, over });
-  if (totalPoints > 0) addPoints(childId, totalPoints);
-  saveData();
-  if (newMilestones.length){
-    launchConfetti();
-    showToast(`Tuile ${newMilestones[newMilestones.length - 1].value} ! +${totalPoints} pts`, '🎉');
-    render(); // reconstruit toute la page (inclut déjà la grille/score à jour)
-  } else {
-    if (over) showToast('Partie terminée !', '🏁');
-    update2048View();
-  }
 }
 
 function renderBadges(){
