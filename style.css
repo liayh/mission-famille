@@ -154,6 +154,14 @@ body[data-theme="royaume"] .calendar-day{border-color:rgba(255,255,255,.25); col
 body[data-theme="royaume"] .calendar-nav .icon-mini{background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.25); color:#fff;}
 body[data-theme="royaume"] .footer-note{color:#f6e7bf;}
 
+body[data-theme="royaume"] .bottom-nav{
+  background:linear-gradient(0deg, var(--rk-wood-dark) 0%, var(--rk-wood) 100%);
+  border-top:3px solid var(--rk-wood-edge);
+  box-shadow:0 -6px 14px rgba(0,0,0,.35);
+}
+body[data-theme="royaume"] .bottom-nav-btn{color:#f6e7bf;}
+body[data-theme="royaume"] .bottom-nav-btn.active{color:#ffe28a; background:rgba(255,255,255,.14); text-shadow:0 1px 0 rgba(0,0,0,.4);}
+
 body[data-theme="royaume"] .empty-state{
   background:linear-gradient(180deg, var(--rk-wood) 0%, var(--rk-wood) 45%, var(--rk-wood-dark) 100%);
   border:4px solid var(--rk-wood-edge);
@@ -266,7 +274,24 @@ body[data-theme]:not([data-theme="royaume"]) .calendar-day.partial{background:rg
 body[data-theme]:not([data-theme="royaume"]) .footer-note{color:var(--theme-muted);}
 
 /* ---------- layout shell ---------- */
-#app{max-width:1080px; margin:0 auto; padding:20px 18px 64px;}
+#app{max-width:1080px; margin:0 auto; padding:20px 18px calc(84px + env(safe-area-inset-bottom));}
+
+/* ---------- navigation principale (bas d'écran) ---------- */
+.bottom-nav{
+  position:fixed; left:0; right:0; bottom:0; z-index:40;
+  display:flex; gap:4px;
+  background:var(--ink-800); border-top:2px solid var(--ink-600);
+  padding:6px max(6px, env(safe-area-inset-left)) calc(6px + env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-right));
+}
+.bottom-nav-btn{
+  flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;
+  background:none; border:none; border-radius:10px; cursor:pointer; color:var(--paper-dim);
+  padding:6px 4px; font-family:var(--font-body); font-weight:700;
+}
+.bottom-nav-btn:hover{color:var(--paper);}
+.bottom-nav-icon{font-size:20px; line-height:1;}
+.bottom-nav-label{font-size:10.5px;}
+.bottom-nav-btn.active{color:var(--gold); background:rgba(242,184,75,.12);}
 
 .topbar{
   display:flex; align-items:center; justify-content:space-between;
