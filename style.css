@@ -599,6 +599,15 @@ body[data-theme]:not([data-theme="royaume"]) .footer-note{color:var(--theme-mute
 .modal-title{font-size:19px; margin-bottom:4px;}
 .modal-sub{font-size:13px; color:var(--ink-700); margin-bottom:18px; line-height:1.45;}
 .modal-actions{display:flex; gap:10px; justify-content:flex-end; margin-top:20px;}
+
+/* ---------- tutoriel de première connexion ---------- */
+.tutorial-icon{font-size:52px; text-align:center; margin-bottom:8px;}
+.tutorial-title{text-align:center;}
+.tutorial-body{text-align:center;}
+.tutorial-dots{display:flex; justify-content:center; gap:7px; margin:4px 0 10px;}
+.tutorial-dot{width:8px; height:8px; border-radius:50%; background:var(--paper-dim);}
+.tutorial-dot.active{background:var(--gold);}
+
 .field{margin-bottom:14px;}
 .field label{display:block; font-size:12.5px; font-weight:700; margin-bottom:5px; color:var(--ink-800); text-transform:uppercase; letter-spacing:.4px; font-family:var(--font-mono);}
 .field input[type=text], .field input[type=number], .field input[type=password], .field select{

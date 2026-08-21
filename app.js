@@ -2155,6 +2155,70 @@ function openSetupWizard(){
   openChildForm({ afterSave: null, isFirstRun: true });
 }
 
+/* ---------------------------- tutoriel de première connexion ---------------------------- */
+
+const TUTORIAL_STEPS = [
+  {
+    icon: '👋',
+    title: 'Bienvenue dans Mission Famille',
+    body: "Un carnet de missions du quotidien (ménage, devoirs) : les enfants gagnent des points en cochant leurs missions, puis les échangent contre des récompenses. Un petit tour rapide de l'essentiel avant de commencer.",
+  },
+  {
+    icon: '🏠',
+    title: 'Onglet Accueil',
+    body: "Les missions du jour et le coffre à récompenses de l'enfant sélectionné en haut de l'écran. Cocher une mission ajoute ses points ; valider une récompense demandera votre code parent.",
+  },
+  {
+    icon: '🎮',
+    title: 'Jeux, Compagnon, Historique',
+    body: '🎮 Jeux : défis de logique, trophées, roue de la chance, coffre à butin. 🐾 Compagnon : un animal virtuel à nourrir et à caresser. 📅 Historique : calendrier des missions et journal des récompenses.',
+  },
+  {
+    icon: '🔐',
+    title: 'Le code parent',
+    body: 'Un code à 4 chiffres protège les réglages et la validation des récompenses — à ne pas donner aux enfants. Vous pouvez le créer et le changer à tout moment dans Réglages → Sécurité.',
+  },
+  {
+    icon: '☁️',
+    title: 'Plusieurs téléphones ?',
+    body: 'Si chaque enfant a son propre appareil, activez la synchronisation dans Réglages → Sécurité pour que tout le monde voie les mêmes missions en temps réel.',
+  },
+];
+
+let tutorialStepIndex = 0;
+
+function openTutorial(){
+  tutorialStepIndex = 0;
+  renderTutorialStep();
+}
+
+function renderTutorialStep(){
+  const step = TUTORIAL_STEPS[tutorialStepIndex];
+  const isFirst = tutorialStepIndex === 0;
+  const isLast = tutorialStepIndex === TUTORIAL_STEPS.length - 1;
+  openModal(`
+    <div class="tutorial-icon">${step.icon}</div>
+    <h3 class="modal-title tutorial-title">${escapeHtml(step.title)}</h3>
+    <p class="modal-sub tutorial-body">${escapeHtml(step.body)}</p>
+    <div class="tutorial-dots">
+      ${TUTORIAL_STEPS.map((_, i) => `<span class="tutorial-dot ${i === tutorialStepIndex ? 'active' : ''}"></span>`).join('')}
+    </div>
+    <div class="modal-actions" style="justify-content:space-between;">
+      ${isFirst ? `<button class="btn btn-ghost" id="btn-tutorial-skip">Passer</button>` : `<button class="btn btn-ghost" id="btn-tutorial-prev">Précédent</button>`}
+      <button class="btn btn-gold" id="btn-tutorial-next">${isLast ? "C'est parti !" : 'Suivant'}</button>
+    </div>
+  `);
+  const prevBtn = document.getElementById('btn-tutorial-prev');
+  if (prevBtn) prevBtn.onclick = () => { tutorialStepIndex--; renderTutorialStep(); };
+  const skipBtn = document.getElementById('btn-tutorial-skip');
+  if (skipBtn) skipBtn.onclick = closeModal;
+  document.getElementById('btn-tutorial-next').onclick = () => {
+    if (isLast){ closeModal(); return; }
+    tutorialStepIndex++;
+    renderTutorialStep();
+  };
+}
+
 /* Retire manuellement des points à un enfant (dispute, comportement...), avec une raison
    optionnelle conservée dans le journal des récompenses pour rester transparent. */
 function openDeductPointsModal(childId){
@@ -2243,6 +2307,7 @@ function openChildForm(existing){
     if (!name){ showToast('Merci de saisir un prénom', '⚠️'); return; }
     const ageRaw = document.getElementById('child-age').value;
     const age = ageRaw === '' ? null : Math.max(0, Math.min(18, parseInt(ageRaw, 10) || 0));
+    const isFirstRun = !editing && existing && existing.isFirstRun;
     if (editing){
       existing.name = name;
       existing.avatar = selectedEmoji;
@@ -2254,8 +2319,8 @@ function openChildForm(existing){
       activeChildId = child.id;
     }
     saveData();
-    closeModal();
     render();
+    if (isFirstRun) openTutorial(); else closeModal();
   };
 }
 
@@ -2447,6 +2512,7 @@ function securitySettingsHtml(){
       <button class="btn btn-sm ${notifOn ? 'btn-gold' : 'btn-ghost'}" id="btn-toggle-notifications">${notifOn ? 'Activées' : 'Activer'}</button>
     </div>
     ${cloudSection}
+    <button class="btn btn-ghost btn-block" id="btn-replay-tutorial" style="margin-bottom:10px;">👋 Revoir le tutoriel</button>
     <button class="btn btn-ghost btn-block" id="btn-change-pin" style="margin-bottom:10px;">🔐 Changer le code parent</button>
     <button class="btn btn-ghost btn-block" id="btn-export" style="margin-bottom:10px;">⬇️ Exporter les données (sauvegarde)</button>
     <label class="btn btn-ghost btn-block" style="display:block; text-align:center; margin-bottom:10px; cursor:pointer;">
@@ -2615,6 +2681,8 @@ function bindSettingsContent(){
       renderSettingsModal();
     }
   });
+  const replayTutorialBtn = document.getElementById('btn-replay-tutorial');
+  if (replayTutorialBtn) replayTutorialBtn.onclick = () => openTutorial();
   const changePinBtn = document.getElementById('btn-change-pin');
   if (changePinBtn) changePinBtn.onclick = () => openPinSetupModal(() => { showToast('Code parent modifié', '🔐'); });
   const exportBtn = document.getElementById('btn-export');
