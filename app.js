@@ -1918,6 +1918,12 @@ function render2048Modal(){
     const t = e.touches[0];
     touch2048Start = { x: t.clientX, y: t.clientY };
   }, { passive: true });
+  // Sans ce blocage, le navigateur interprète souvent un glissement vertical comme un
+  // défilement de page (la modale est scrollable) et « avale » le geste avant qu'on ait pu
+  // calculer la direction dans touchend — le glissement semblait alors ne rien faire.
+  gridEl.addEventListener('touchmove', (e) => {
+    if (touch2048Start) e.preventDefault();
+  }, { passive: false });
   gridEl.addEventListener('touchend', (e) => {
     if (!touch2048Start) return;
     const t = e.changedTouches[0];
@@ -1927,6 +1933,7 @@ function render2048Modal(){
     const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
     play2048Move(child.id, dir);
   }, { passive: true });
+  gridEl.addEventListener('touchcancel', () => { touch2048Start = null; }, { passive: true });
 }
 
 function play2048Move(childId, direction){
