@@ -460,6 +460,7 @@ function defaultData(){
     pendingRequests: [],  // { id, childId, rewardId, date }
     logicProgress: {},     // { childId: { gameId: { 'YYYY-MM-DD': [questionIndex du jour, ...] } } }
     logicTotalSolved: {},  // { childId: nombre total de défis réussis (toutes dates confondues) }
+    wheelSpins: {},         // { childId: { week: 'YYYY-Www', prize: { label, points } } }
   };
 }
 
@@ -471,6 +472,7 @@ function migrateData(data){
   if (!Array.isArray(data.redemptions)) data.redemptions = [];
   if (!Array.isArray(data.pendingRequests)) data.pendingRequests = [];
   if (!data.logicProgress || typeof data.logicProgress !== 'object') data.logicProgress = {};
+  if (!data.wheelSpins || typeof data.wheelSpins !== 'object') data.wheelSpins = {};
 
   // Migration ponctuelle (une seule fois) : ajoute les missions ménage introduites
   // après la première version, sans les ré-ajouter si le parent les a supprimées ensuite.
@@ -724,6 +726,58 @@ function weeklyPointsSeries(childId, weeks = 8){
   return weekly;
 }
 
+/* Clé de semaine ISO (ex. "2026-W34"), utilisée pour la roue de la chance (une fois par
+   semaine) et le défi frère/sœur (comparaison sur la semaine calendaire en cours). */
+function weekKey(date = new Date()){
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  const weekNo = 1 + Math.round(((d - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+  return d.getFullYear() + '-W' + String(weekNo).padStart(2, '0');
+}
+
+/* Points gagnés depuis le lundi de la semaine calendaire en cours (pas une fenêtre
+   glissante de 7 jours, pour que tous les enfants soient comparés sur la même période). */
+function pointsThisWeek(childId){
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  let sum = 0;
+  for (let i = 0; i < 7; i++){
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    if (d > now) break;
+    const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    const doneIds = state.completions[dateStr]?.[childId] || [];
+    sum += doneIds.reduce((s, taskId) => {
+      const task = state.tasks.find(t => t.id === taskId);
+      return s + (task ? task.points : 0);
+    }, 0);
+  }
+  return sum;
+}
+
+const WHEEL_PRIZES = [
+  { label: '+1 point bonus', points: 1, weight: 30 },
+  { label: '+2 points bonus', points: 2, weight: 25 },
+  { label: '+3 points bonus', points: 3, weight: 20 },
+  { label: '+5 points bonus', points: 5, weight: 15 },
+  { label: '🎉 Jackpot ! +10 points', points: 10, weight: 7 },
+  { label: '👑 Méga jackpot ! +15 points', points: 15, weight: 3 },
+];
+
+function pickWheelPrize(){
+  const total = WHEEL_PRIZES.reduce((sum, p) => sum + p.weight, 0);
+  let r = Math.random() * total;
+  for (const prize of WHEEL_PRIZES){
+    if (r < prize.weight) return prize;
+    r -= prize.weight;
+  }
+  return WHEEL_PRIZES[0];
+}
+
 function tasksForChildToday(){
   const schoolDay = isSchoolDay();
   return state.tasks.filter(t => !t.schoolDaysOnly || schoolDay);
@@ -784,8 +838,10 @@ function render(){
     ${renderTopbar()}
     ${renderBackupReminder()}
     ${renderChildRow()}
+    ${renderSiblingChallenge()}
     ${renderLogicGames()}
     ${renderBadges()}
+    ${renderWheel()}
     ${renderBoard()}
     ${renderCalendar()}
     ${renderHistory()}
@@ -797,6 +853,7 @@ function render(){
   bindCalendar();
   bindLogicGames();
   bindBadges();
+  bindWheel();
   bindBoard();
 }
 
@@ -1073,6 +1130,88 @@ function openBadgesModal(){
     <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-badges">Fermer</button></div>
   `, { wide: true });
   document.getElementById('btn-close-badges').onclick = closeModal;
+}
+
+function renderWheel(){
+  const child = getChild(activeChildId);
+  const spin = state.wheelSpins[child.id];
+  const alreadySpun = spin && spin.week === weekKey();
+  return `
+  <section class="logic-panel logic-teaser" aria-labelledby="wheel-title">
+    <div>
+      <h2 id="wheel-title">🎡 Roue de la Chance</h2>
+      <p>${alreadySpun ? `Déjà tournée cette semaine : ${escapeHtml(spin.prize.label)}` : 'Un tour gratuit chaque semaine, tente ta chance !'}</p>
+    </div>
+    <button class="btn btn-gold" id="btn-open-wheel">${alreadySpun ? 'Revoir' : 'Tourner'}</button>
+  </section>`;
+}
+
+function bindWheel(){
+  const openBtn = document.getElementById('btn-open-wheel');
+  if (openBtn) openBtn.onclick = () => openWheelModal();
+}
+
+function openWheelModal(){
+  const child = getChild(activeChildId);
+  if (!child) return;
+  const spin = state.wheelSpins[child.id];
+  const alreadySpun = spin && spin.week === weekKey();
+
+  if (alreadySpun){
+    openModal(`
+      <h3 class="modal-title">🎡 Roue de la Chance</h3>
+      <p class="modal-sub">${escapeHtml(child.name)}</p>
+      <div class="logic-complete">${escapeHtml(spin.prize.label)}<br><span style="font-size:12px; font-weight:400;">Reviens la semaine prochaine pour un nouveau tour !</span></div>
+      <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-wheel">Fermer</button></div>
+    `);
+    document.getElementById('btn-close-wheel').onclick = closeModal;
+    return;
+  }
+
+  openModal(`
+    <h3 class="modal-title">🎡 Roue de la Chance</h3>
+    <p class="modal-sub">${escapeHtml(child.name)} · un tour gratuit par semaine</p>
+    <div class="wheel-emoji" id="wheel-emoji">🎡</div>
+    <p class="logic-feedback" id="wheel-feedback"></p>
+    <div class="modal-actions"><button class="btn btn-gold" id="btn-spin-wheel">Lancer la roue !</button></div>
+  `);
+  const spinBtn = document.getElementById('btn-spin-wheel');
+  spinBtn.onclick = () => {
+    spinBtn.disabled = true;
+    const wheelEl = document.getElementById('wheel-emoji');
+    wheelEl.classList.add('spinning');
+    document.getElementById('wheel-feedback').textContent = 'La roue tourne...';
+    setTimeout(() => {
+      const prize = pickWheelPrize();
+      state.wheelSpins[child.id] = { week: weekKey(), prize };
+      addPoints(child.id, prize.points);
+      saveData();
+      launchConfetti();
+      showToast(prize.label, '🎡');
+      renderWheel();
+      openWheelModal();
+      render();
+    }, 1100);
+  };
+}
+
+function renderSiblingChallenge(){
+  if (state.children.length < 2) return '';
+  const ranked = [...state.children]
+    .map(c => ({ child: c, pts: pointsThisWeek(c.id) }))
+    .sort((a, b) => b.pts - a.pts);
+  const max = Math.max(1, ...ranked.map(r => r.pts));
+  const rows = ranked.map((r, i) => `
+    <div class="sibling-row">
+      <span class="sibling-name">${i === 0 && r.pts > 0 ? '👑 ' : ''}${escapeHtml(r.child.avatar)} ${escapeHtml(r.child.name)}</span>
+      <div class="sibling-bar-track"><div class="sibling-bar-fill" style="width:${Math.round((r.pts/max)*100)}%;"></div></div>
+      <span class="sibling-pts">${r.pts} pts</span>
+    </div>`).join('');
+  return `
+  <section class="logic-panel" aria-labelledby="sibling-title">
+    <h2 id="sibling-title" style="margin-bottom:10px;">⚔️ Défi de la semaine</h2>
+    ${rows}
+  </section>`;
 }
 
 function openLogicGame(gameId){
