@@ -27,7 +27,7 @@ const THEMES = {
 const LOGIC_GAMES = [
   {
     id: 'series', title: 'Les suites malignes', icon: '🔢', description: 'Trouve le nombre qui vient ensuite.',
-    questions: Array.from({ length: 10 }, (_, index) => {
+    questions: Array.from({ length: 60 }, (_, index) => {
       const start = index + 2;
       const step = (index % 3) + 2;
       const answer = start + step * 3;
@@ -36,7 +36,7 @@ const LOGIC_GAMES = [
   },
   {
     id: 'calcul', title: 'Calcul express', icon: '🧮', description: 'Résous de petits calculs de tête.',
-    questions: Array.from({ length: 10 }, (_, index) => {
+    questions: Array.from({ length: 60 }, (_, index) => {
       const a = index + 4;
       const b = (index % 4) + 2;
       const answer = a * b;
@@ -45,7 +45,7 @@ const LOGIC_GAMES = [
   },
   {
     id: 'intrus', title: 'Trouve l’intrus', icon: '🕵️', description: 'Repère le nombre qui ne suit pas la règle.',
-    questions: Array.from({ length: 10 }, (_, index) => {
+    questions: Array.from({ length: 60 }, (_, index) => {
       const answer = index + 3;
       const values = [answer * 2, answer * 4, answer * 6, answer * 6 + 1];
       return { text: `Quel nombre est différent : ${values.join(' - ')} ?`, answer: String(values[3]), options: [String(values[3]), String(values[0]), String(values[1])] };
@@ -59,6 +59,21 @@ const LOGIC_GAMES = [
       ['Quel mot est un moyen de transport ?', 'train', ['train', 'gâteau', 'oreiller']], ['Quel mot se mange ?', 'banane', ['banane', 'cahier', 'lampe']],
       ['Quel mot est un vêtement ?', 'pull', ['pull', 'fourchette', 'jardin']], ['Quel mot est dans la nature ?', 'rivière', ['rivière', 'téléphone', 'chaussure']],
       ['Quel mot est une forme ?', 'triangle', ['triangle', 'orange', 'bouteille']], ['Quel mot indique une saison ?', 'hiver', ['hiver', 'mouton', 'cartable']],
+      ['Quel mot est un légume ?', 'carotte', ['carotte', 'ballon', 'stylo']], ['Quel mot est un instrument de musique ?', 'guitare', ['guitare', 'valise', 'nuage']],
+      ['Quel mot est un oiseau ?', 'moineau', ['moineau', 'chat', 'poisson']], ['Quel mot est un sport ?', 'tennis', ['tennis', 'chaise', 'pomme']],
+      ['Quel mot est un métier ?', 'pompier', ['pompier', 'table', 'arbre']], ['Quel mot est un jour de la semaine ?', 'mardi', ['mardi', 'avril', 'rouge']],
+      ['Quel mot est un mois de l’année ?', 'juin', ['juin', 'lundi', 'bleu']], ['Quel mot est un pays ?', 'France', ['France', 'Lyon', 'stylo']],
+      ['Quel mot est une partie du corps ?', 'genou', ['genou', 'table', 'nuage']], ['Quel mot est un meuble ?', 'armoire', ['armoire', 'chat', 'pomme']],
+      ['Quel mot est un insecte ?', 'fourmi', ['fourmi', 'chien', 'table']], ['Quel mot est un arbre ?', 'chêne', ['chêne', 'chaise', 'ballon']],
+      ['Quel mot est une boisson ?', 'jus', ['jus', 'crayon', 'lit']], ['Quel mot est un jouet ?', 'poupée', ['poupée', 'casserole', 'chaise']],
+      ['Quel mot décrit un sentiment ?', 'joie', ['joie', 'table', 'pomme']], ['Quel mot est un outil ?', 'marteau', ['marteau', 'chat', 'nuage']],
+      ['Quel mot est un moyen de communication ?', 'téléphone', ['téléphone', 'arbre', 'chaise']], ['Quel mot est une pièce de la maison ?', 'cuisine', ['cuisine', 'vélo', 'pomme']],
+      ['Quel mot est une matière à l’école ?', 'mathématiques', ['mathématiques', 'chaise', 'pomme']], ['Quel mot est un fruit exotique ?', 'ananas', ['ananas', 'carotte', 'chaise']],
+      ['Quel mot est un élément de la nature ?', 'montagne', ['montagne', 'stylo', 'chaise']], ['Quel mot est un véhicule ?', 'camion', ['camion', 'pomme', 'lit']],
+      ['Quel mot est un animal marin ?', 'dauphin', ['dauphin', 'chat', 'arbre']], ['Quel mot est un accessoire ?', 'chapeau', ['chapeau', 'pomme', 'arbre']],
+      ['Quel mot est une fête ?', 'Noël', ['Noël', 'table', 'pomme']], ['Quel mot est un chiffre en lettres ?', 'sept', ['sept', 'chaise', 'vélo']],
+      ['Quel mot est un point cardinal ?', 'nord', ['nord', 'table', 'chat']], ['Quel mot est une saison ?', 'été', ['été', 'table', 'chat']],
+      ['Quel mot est une forme géométrique ?', 'cercle', ['cercle', 'pomme', 'chaise']], ['Quel mot est un métal ?', 'fer', ['fer', 'pomme', 'chaise']],
     ].map(([text, answer, options]) => ({ text, answer, options })),
   },
   {
@@ -69,6 +84,21 @@ const LOGIC_GAMES = [
       ['Je tombe sans me faire mal et je mouille. Qui suis-je ?', 'pluie', ['pluie', 'pierre', 'soleil']], ['Je donne l’heure sans parler. Qui suis-je ?', 'horloge', ['horloge', 'fourchette', 'ballon']],
       ['Plus je sèche, plus je deviens mouillé. Qui suis-je ?', 'serviette', ['serviette', 'parapluie', 'sable']], ['J’ai des dents mais je ne mords pas. Qui suis-je ?', 'peigne', ['peigne', 'lion', 'nuage']],
       ['Je suis rond et je roule. Qui suis-je ?', 'ballon', ['ballon', 'livre', 'pantalon']], ['J’ai un cou mais pas de tête. Qui suis-je ?', 'bouteille', ['bouteille', 'poule', 'table']],
+      ['J’ai des feuilles mais je ne suis pas un livre. Qui suis-je ?', 'arbre', ['arbre', 'cahier', 'chat']], ['Je vole sans ailes et je pleure sans yeux. Qui suis-je ?', 'nuage', ['nuage', 'oiseau', 'avion']],
+      ['Plus on me creuse, plus je deviens grand. Qui suis-je ?', 'trou', ['trou', 'arbre', 'ballon']], ['J’ai un visage et deux aiguilles mais je ne couds pas. Qui suis-je ?', 'horloge', ['horloge', 'poupée', 'robot']],
+      ['Je suis noir quand je suis propre et blanc quand je suis sale. Qui suis-je ?', 'tableau', ['tableau', 'chat', 'nuage']], ['On me lance et je reviens toujours tout seul. Qui suis-je ?', 'boomerang', ['boomerang', 'ballon', 'cerf-volant']],
+      ['Je n’ai pas de bouche mais je raconte des histoires. Qui suis-je ?', 'livre', ['livre', 'radio', 'télévision']], ['Plus il fait chaud, plus vite je fonds. Qui suis-je ?', 'glaçon', ['glaçon', 'chocolat', 'beurre']],
+      ['J’ai une couronne mais je ne suis pas roi. Qui suis-je ?', 'dent', ['dent', 'arbre', 'roi']], ['Je grandis en hiver et je fonds au printemps. Qui suis-je ?', 'bonhomme de neige', ['bonhomme de neige', 'sapin', 'ours']],
+      ['J’ai un long cou mais je ne suis pas une girafe. Qui suis-je ?', 'bouteille', ['bouteille', 'pull', 'chaussette']], ['Je suis plein de trous mais je retiens l’eau. Qui suis-je ?', 'éponge', ['éponge', 'panier', 'passoire']],
+      ['On me casse pour m’utiliser. Qui suis-je ?', 'œuf', ['œuf', 'verre', 'ballon']], ['Je monte quand la pluie descend. Qui suis-je ?', 'parapluie', ['parapluie', 'arc-en-ciel', 'cerf-volant']],
+      ['Je claque quand je suis content mais je n’ai pas de mains. Qui suis-je ?', 'drapeau', ['drapeau', 'chien', 'porte']], ['Je vis dans une coquille dure mais je ne rampe pas. Qui suis-je ?', 'noix', ['noix', 'escargot', 'tortue']],
+      ['Je fais du bruit quand on m’ouvre et quand on me ferme. Qui suis-je ?', 'porte', ['porte', 'livre', 'boîte']], ['Je suis rempli d’histoires mais je ne parle jamais. Qui suis-je ?', 'bibliothèque', ['bibliothèque', 'radio', 'télévision']],
+      ['Je change de couleur avec les saisons mais je ne bouge pas. Qui suis-je ?', 'feuille', ['feuille', 'arbre', 'fleur']], ['Je porte plein de vêtements mais je n’ai pas de corps. Qui suis-je ?', 'armoire', ['armoire', 'valise', 'cintre']],
+      ['Je tourne toute la journée sans jamais me fatiguer. Qui suis-je ?', 'ventilateur', ['ventilateur', 'horloge', 'roue']], ['Je suis plein au début et vide à la fin, mais je ne suis pas un verre. Qui suis-je ?', 'sablier', ['sablier', 'bouteille', 'verre']],
+      ['J’ai un toit et des roues mais je ne suis pas une maison. Qui suis-je ?', 'voiture', ['voiture', 'vélo', 'tente']], ['Je suis fait de sucre et je fonds sur la langue. Qui suis-je ?', 'bonbon', ['bonbon', 'gâteau', 'glaçon']],
+      ['Je brille de mille lumières la nuit mais je suis invisible le jour. Qui suis-je ?', 'étoile', ['étoile', 'lune', 'lampe']], ['J’ai quatre roues mais je ne suis pas une voiture, on me pousse dans les magasins. Qui suis-je ?', 'chariot', ['chariot', 'voiture', 'vélo']],
+      ['Je suis rond, orange, et je pousse sur un arbre. Qui suis-je ?', 'orange', ['orange', 'citron', 'pomme']], ['On me met sur la tête pour se protéger du soleil. Qui suis-je ?', 'chapeau', ['chapeau', 'écharpe', 'gant']],
+      ['Je suis fait de bois et je sers à écrire quand on me taille. Qui suis-je ?', 'crayon', ['crayon', 'stylo', 'gomme']], ['Je change de forme selon le vase qui me contient. Qui suis-je ?', 'eau', ['eau', 'air', 'sable']],
     ].map(([text, answer, options]) => ({ text, answer, options })),
   },
 ];
@@ -186,6 +216,43 @@ function shuffled(items){
     [result[index], result[randomIndex]] = [result[randomIndex], result[index]];
   }
   return result;
+}
+
+/* Générateur pseudo-aléatoire déterministe (même seed = mêmes valeurs à chaque appel),
+   utilisé pour tirer "les défis du jour" : identiques pour tout le monde ce jour-là,
+   différents chaque jour, sans avoir besoin de stocker quoi que ce soit côté serveur. */
+function seededRandom(seed){
+  let value = seed >>> 0;
+  return function(){
+    value |= 0; value = (value + 0x6D2B79F5) | 0;
+    let t = Math.imul(value ^ (value >>> 15), 1 | value);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function dailySeed(str){
+  let hash = 0;
+  for (let i = 0; i < str.length; i++){
+    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+/* Tire les 10 questions du jour pour un jeu donné, dans un ordre stable pour la journée
+   (même famille ou pas), à partir d'un bassin de questions bien plus large. */
+function dailyQuestionIndices(gameId, poolSize, count = 10, dateStr = todayStr()){
+  const rng = seededRandom(dailySeed(dateStr + ':' + gameId));
+  const indices = Array.from({ length: poolSize }, (_, i) => i);
+  for (let i = indices.length - 1; i > 0; i--){
+    const j = Math.floor(rng() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  return indices.slice(0, Math.min(count, poolSize));
+}
+
+function getTodaysQuestions(game){
+  return dailyQuestionIndices(game.id, game.questions.length).map(i => game.questions[i]);
 }
 
 /* Petite pluie de confettis pour célébrer une réussite (mission validée, bonne réponse,
@@ -389,7 +456,8 @@ function defaultData(){
     completions: {},      // { 'YYYY-MM-DD': { childId: [taskId, ...] } }
     redemptions: [],      // { id, childId, rewardId, rewardLabel, date, pointsSpent }
     pendingRequests: [],  // { id, childId, rewardId, date }
-    logicProgress: {},     // { childId: { gameId: [questionIndex, ...] } }
+    logicProgress: {},     // { childId: { gameId: { 'YYYY-MM-DD': [questionIndex du jour, ...] } } }
+    logicTotalSolved: {},  // { childId: nombre total de défis réussis (toutes dates confondues) }
   };
 }
 
@@ -484,6 +552,24 @@ function migrateData(data){
       data.theme = 'royaume';
     }
     data.themeMigrated_v5 = true;
+    changed = true;
+  }
+  // Migration ponctuelle v6 : les jeux de logique passent d'un jeu unique (50 défis au
+  // total, vite épuisés) à 10 défis renouvelés chaque jour par catégorie. L'ancien
+  // format ({ gameId: [index, ...] }) est converti en format par date ({ gameId: { date:
+  // [index, ...] } }), et le nombre déjà réussi est crédité dans le compteur à vie plutôt
+  // que perdu.
+  if (!data.logicDailyMigrated_v6){
+    if (!data.logicTotalSolved) data.logicTotalSolved = {};
+    Object.entries(data.logicProgress || {}).forEach(([childId, byGame]) => {
+      Object.entries(byGame || {}).forEach(([gameId, value]) => {
+        if (Array.isArray(value)){
+          data.logicTotalSolved[childId] = (data.logicTotalSolved[childId] || 0) + value.length;
+          data.logicProgress[childId][gameId] = {};
+        }
+      });
+    });
+    data.logicDailyMigrated_v6 = true;
     changed = true;
   }
   return changed;
@@ -803,17 +889,21 @@ function bindCalendar(){
 }
 
 function logicDoneCount(childId, gameId){
-  return state.logicProgress[childId]?.[gameId]?.length || 0;
+  return state.logicProgress[childId]?.[gameId]?.[todayStr()]?.length || 0;
+}
+
+function logicTotalSolved(childId){
+  return state.logicTotalSolved?.[childId] || 0;
 }
 
 function renderLogicGames(){
   const child = getChild(activeChildId);
-  const totalDone = LOGIC_GAMES.reduce((sum, game) => sum + logicDoneCount(child.id, game.id), 0);
+  const totalToday = LOGIC_GAMES.reduce((sum, game) => sum + logicDoneCount(child.id, game.id), 0);
   return `
   <section class="logic-panel logic-teaser" aria-labelledby="logic-title">
     <div>
       <h2 id="logic-title">🗺️ Défis du Royaume</h2>
-      <p>${totalDone} / 50 défis réussis · Calcul mental &amp; logique</p>
+      <p>${totalToday} / 50 défis réussis aujourd'hui · ${logicTotalSolved(child.id)} au total · Calcul mental &amp; logique</p>
     </div>
     <button class="btn btn-gold" id="btn-open-logic-menu">Jouer</button>
   </section>`;
@@ -849,15 +939,17 @@ function openLogicGame(gameId){
   renderLogicNodeMap(gameId);
 }
 
-/* Carte des défis : un noeud par exercice (réussi / débloqué / verrouillé), dans l'ordre. */
+/* Carte des défis du jour : un noeud par exercice (réussi / débloqué / verrouillé), dans
+   l'ordre. Les 10 questions changent chaque jour (tirées d'un bassin bien plus large). */
 function renderLogicNodeMap(gameId){
   const game = LOGIC_GAMES.find(item => item.id === gameId);
   const child = getChild(activeChildId);
   if (!game || !child) return;
-  const done = state.logicProgress[child.id]?.[game.id] || [];
-  const firstUnsolved = game.questions.findIndex((_, index) => !done.includes(index));
+  const todaysQuestions = getTodaysQuestions(game);
+  const done = state.logicProgress[child.id]?.[game.id]?.[todayStr()] || [];
+  const firstUnsolved = todaysQuestions.findIndex((_, index) => !done.includes(index));
   const allDone = firstUnsolved < 0;
-  const nodesHtml = game.questions.map((_, index) => {
+  const nodesHtml = todaysQuestions.map((_, index) => {
     const isDone = done.includes(index);
     const isUnlocked = index === firstUnsolved;
     const nodeState = isDone ? 'done' : (isUnlocked ? 'unlocked' : 'locked');
@@ -866,8 +958,8 @@ function renderLogicNodeMap(gameId){
   }).join('');
   openModal(`
     <h3 class="modal-title">${game.icon} ${escapeHtml(game.title)}</h3>
-    <p class="modal-sub">${escapeHtml(child.name)} · ${done.length} / 10 réussis</p>
-    ${allDone ? '<div class="logic-complete">🏆 Jeu terminé</div>' : ''}
+    <p class="modal-sub">${escapeHtml(child.name)} · ${done.length} / 10 réussis aujourd'hui</p>
+    ${allDone ? '<div class="logic-complete">🏆 Défis du jour terminés ! Reviens demain pour de nouveaux défis.</div>' : ''}
     <div class="node-grid">${nodesHtml}</div>
     <div class="modal-actions"><button class="btn btn-ghost" id="btn-close-logic">Fermer</button></div>
   `, { wide: true });
@@ -884,13 +976,14 @@ function openLogicQuestion(gameId, questionIndex){
   const game = LOGIC_GAMES.find(item => item.id === gameId);
   const child = getChild(activeChildId);
   if (!game || !child) return;
-  let questionOptions = shuffled(game.questions[questionIndex].options);
+  const todaysQuestions = getTodaysQuestions(game);
+  let questionOptions = shuffled(todaysQuestions[questionIndex].options);
 
   const renderQuestion = (message = '') => {
-    const question = game.questions[questionIndex];
+    const question = todaysQuestions[questionIndex];
     openModal(`
       <h3 class="modal-title">${game.icon} ${escapeHtml(game.title)}</h3>
-      <p class="modal-sub">Exercice ${questionIndex + 1} sur 10 · ${escapeHtml(child.name)}</p>
+      <p class="modal-sub">Défi ${questionIndex + 1} sur 10 · ${escapeHtml(child.name)}</p>
       <div class="logic-question">${escapeHtml(question.text)}</div>
       <div class="logic-options">${questionOptions.map(option => `<button class="logic-option" data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join('')}</div>
       <p class="logic-feedback">${escapeHtml(message)}</p>
@@ -903,9 +996,15 @@ function openLogicQuestion(gameId, questionIndex){
           renderQuestion('Pas encore. Relis la question et essaie une autre réponse.');
           return;
         }
+        const day = todayStr();
         if (!state.logicProgress[child.id]) state.logicProgress[child.id] = {};
-        if (!state.logicProgress[child.id][game.id]) state.logicProgress[child.id][game.id] = [];
-        if (!state.logicProgress[child.id][game.id].includes(questionIndex)) state.logicProgress[child.id][game.id].push(questionIndex);
+        if (!state.logicProgress[child.id][game.id]) state.logicProgress[child.id][game.id] = {};
+        if (!state.logicProgress[child.id][game.id][day]) state.logicProgress[child.id][game.id][day] = [];
+        if (!state.logicProgress[child.id][game.id][day].includes(questionIndex)){
+          state.logicProgress[child.id][game.id][day].push(questionIndex);
+          if (!state.logicTotalSolved) state.logicTotalSolved = {};
+          state.logicTotalSolved[child.id] = (state.logicTotalSolved[child.id] || 0) + 1;
+        }
         saveData();
         launchConfetti();
         showToast('Bravo !', '🎉');
