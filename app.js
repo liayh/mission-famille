@@ -206,6 +206,15 @@ function todayStr(){
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
+/* Minuit du lundi de la semaine calendaire en cours (même convention que le défi de la
+   semaine et le défi frère/sœur : la semaine commence le lundi, pas il y a 7 jours). */
+function currentWeekStartDate(){
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  return start;
+}
+
 function monthKey(date = new Date()){
   return date.getFullYear() + '-' + String(date.getMonth()+1).padStart(2,'0');
 }
@@ -2092,9 +2101,13 @@ function renderHistory(){
       <span>🔔 <strong>${escapeHtml(child.name)}</strong> demande « ${escapeHtml(reward.label)} » (${escapeHtml(reward.cost)} pts) - en attente du parent</span>
     </div>`;
   }).join('');
-  const recent = state.redemptions.slice(0, 8);
+  // N'affiche que la semaine calendaire en cours (remis à zéro chaque lundi) : le journal
+  // ne garde pas une liste qui s'allonge indéfiniment. Rien n'est supprimé pour autant —
+  // niveaux, trophées et euros cumulés continuent de se baser sur tout l'historique réel.
+  const weekStart = currentWeekStartDate();
+  const recent = state.redemptions.filter(r => new Date(r.date) >= weekStart);
   const rows = !pendingRows && recent.length === 0
-    ? `<div class="history-empty">Aucune récompense utilisée pour le moment.</div>`
+    ? `<div class="history-empty">Aucune récompense utilisée cette semaine.</div>`
     : pendingRows + recent.map(r => {
         const c = getChild(r.childId);
         const d = new Date(r.date);
@@ -2117,7 +2130,7 @@ function renderHistory(){
           <span>${escapeHtml(r.rewardIcon)} <strong>${escapeHtml(c ? c.name : '?')}</strong> ${r.kind === 'monthly' ? 'a gagné' : 'a utilisé'} « ${escapeHtml(r.rewardLabel)} » (${rewardValue})</span>
         </div>`;
       }).join('');
-  return `<div class="history-strip"><h3>📜 Journal des récompenses</h3>${rows}</div>`;
+  return `<div class="history-strip"><h3>📜 Journal des récompenses (cette semaine)</h3>${rows}</div>`;
 }
 
 /* ---------------------------- modales génériques ---------------------------- */
